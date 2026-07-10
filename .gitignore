@@ -1,0 +1,26 @@
+# Segredos
+.env
+
+# Tooling local de desenvolvimento (nao versionado)
+.claude/
+*.log
+
+# Java / Maven
+target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Docker
+infra/postgres/data/

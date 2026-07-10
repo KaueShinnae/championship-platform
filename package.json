@@ -1,0 +1,11 @@
+{
+  "name": "championship-platform",
+  "version": "0.1.0",
+  "description": "Orquestracao local da plataforma de campeonato (infra + servicos + dashboard)",
+  "private": true,
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1 -SkipBuild",
+    "dev:build": "powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1",
+    "down": "powershell -ExecutionPolicy Bypass -File scripts/dev-down.ps1"
+  }
+}

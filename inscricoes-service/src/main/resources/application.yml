@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: inscricoes-service
+
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/inscricoes
+    username: ${POSTGRES_USER:championship}
+    password: ${POSTGRES_PASSWORD:championship}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: inscricoes-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    # propagacao de trace atraves do Kafka (skill observability-langfuse):
+    # producer injeta traceparent no header; listener continua o mesmo trace
+    template:
+      observation-enabled: true
+    listener:
+      observation-enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      # exporter do Spring e OTLP/HTTP — porta 4318 do collector (4317 e gRPC)
+      endpoint: ${OTEL_EXPORTER_OTLP_HTTP_ENDPOINT:http://localhost:4318}/v1/traces
+
+server:
+  port: 8081
+
+championship:
+  outbox:
+    poll-interval-ms: 500
