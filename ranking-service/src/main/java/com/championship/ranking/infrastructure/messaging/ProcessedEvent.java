@@ -1,6 +1,8 @@
 package com.championship.ranking.infrastructure.messaging;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -26,6 +28,13 @@ public class ProcessedEvent {
     @Column(name = "aggregate_id")
     private UUID aggregateId;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private String payload;
+
+    @Column(name = "trace_id", length = 32)
+    private String traceId;
+
     protected ProcessedEvent() {
     }
 
@@ -38,6 +47,12 @@ public class ProcessedEvent {
         this(eventId);
         this.eventType = eventType;
         this.aggregateId = aggregateId;
+    }
+
+    public ProcessedEvent(UUID eventId, String eventType, UUID aggregateId, String payload, String traceId) {
+        this(eventId, eventType, aggregateId);
+        this.payload = payload;
+        this.traceId = traceId;
     }
 
     public UUID getEventId() {
@@ -54,5 +69,13 @@ public class ProcessedEvent {
 
     public UUID getAggregateId() {
         return aggregateId;
+    }
+
+    public String getPayload() {
+        return payload;
+    }
+
+    public String getTraceId() {
+        return traceId;
     }
 }

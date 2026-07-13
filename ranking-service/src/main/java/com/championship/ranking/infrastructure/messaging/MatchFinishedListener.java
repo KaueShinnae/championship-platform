@@ -23,13 +23,16 @@ public class MatchFinishedListener {
     private final ObjectMapper objectMapper;
     private final RankingProjectionService rankingProjectionService;
     private final ProcessedEventRepository processedEventRepository;
+    private final TraceIdProvider traceIdProvider;
 
     public MatchFinishedListener(ObjectMapper objectMapper,
                                   RankingProjectionService rankingProjectionService,
-                                  ProcessedEventRepository processedEventRepository) {
+                                  ProcessedEventRepository processedEventRepository,
+                                  TraceIdProvider traceIdProvider) {
         this.objectMapper = objectMapper;
         this.rankingProjectionService = rankingProjectionService;
         this.processedEventRepository = processedEventRepository;
+        this.traceIdProvider = traceIdProvider;
     }
 
     @KafkaListener(topics = MatchFinishedPayload.TYPE)
@@ -45,8 +48,10 @@ public class MatchFinishedListener {
 
         rankingProjectionService.aplicarResultado(envelope.payload());
 
+        // guarda a mensagem bruta e o trace id para rastreabilidade no Monitoramento
         processedEventRepository.save(new ProcessedEvent(
-                envelope.eventId(), envelope.type(), envelope.aggregateId()));
+                envelope.eventId(), envelope.type(), envelope.aggregateId(),
+                message, traceIdProvider.currentTraceId()));
         log.info("ranking projection updated matchId={} groupId={}",
                 envelope.payload().matchId(), envelope.payload().groupId());
     }

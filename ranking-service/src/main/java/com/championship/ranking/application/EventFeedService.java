@@ -23,7 +23,12 @@ public class EventFeedService {
 
     public enum Kind { CONSUMED, PUBLISHED }
 
-    public record FeedEntry(Kind kind, String type, UUID aggregateId, Instant at) {
+    /**
+     * Entrada do feed com os dados de rastreabilidade: id do evento (chave de
+     * deduplicação), trace id do OpenTelemetry e o payload JSON bruto.
+     */
+    public record FeedEntry(Kind kind, String type, UUID eventId, UUID aggregateId,
+                            String traceId, String payload, Instant at) {
     }
 
     private final ProcessedEventRepository processedEventRepository;
@@ -41,11 +46,13 @@ public class EventFeedService {
 
         processedEventRepository.findByEventTypeNotNullOrderByProcessedAtDesc(Limit.of(limit))
                 .forEach(event -> entries.add(new FeedEntry(
-                        Kind.CONSUMED, event.getEventType(), event.getAggregateId(), event.getProcessedAt())));
+                        Kind.CONSUMED, event.getEventType(), event.getEventId(), event.getAggregateId(),
+                        event.getTraceId(), event.getPayload(), event.getProcessedAt())));
 
         outboxEventRepository.findAllByOrderByCreatedAtDesc(Limit.of(limit))
                 .forEach(event -> entries.add(new FeedEntry(
-                        Kind.PUBLISHED, event.getType(), event.getAggregateId(), event.getOccurredAt())));
+                        Kind.PUBLISHED, event.getType(), event.getId(), event.getAggregateId(),
+                        event.getTraceId(), event.getPayload(), event.getOccurredAt())));
 
         return entries.stream()
                 .sorted(Comparator.comparing(FeedEntry::at).reversed())

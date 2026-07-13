@@ -38,6 +38,9 @@ public class OutboxEvent {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "trace_id", length = 32)
+    private String traceId;
+
     protected OutboxEvent() {
     }
 
@@ -48,6 +51,11 @@ public class OutboxEvent {
         this.payload = payload;
         this.occurredAt = occurredAt;
         this.createdAt = Instant.now();
+    }
+
+    public OutboxEvent(UUID id, UUID aggregateId, String type, String payload, Instant occurredAt, String traceId) {
+        this(id, aggregateId, type, payload, occurredAt);
+        this.traceId = traceId;
     }
 
     public void marcarPublicado() {
@@ -76,5 +84,9 @@ public class OutboxEvent {
 
     public Instant getOccurredAt() {
         return occurredAt;
+    }
+
+    public String getTraceId() {
+        return traceId;
     }
 }

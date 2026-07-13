@@ -39,7 +39,10 @@ export interface GroupStandings {
 export interface FeedEntry {
   kind: "CONSUMED" | "PUBLISHED";
   type: string;
+  event_id: string;
   aggregate_id: string;
+  trace_id: string | null;
+  payload: string | null;
   at: string;
 }
 
@@ -67,7 +70,7 @@ export async function fetchStandings(groupId: string): Promise<GroupStandings | 
 }
 
 export function fetchEventFeed(): Promise<FeedEntry[]> {
-  return getJson<FeedEntry[]>("/api/ranking/events/recent?limit=20");
+  return getJson<FeedEntry[]>("/api/ranking/events/recent?limit=50");
 }
 
 // ---- area do organizador (inscricoes-service + agendamento) ----

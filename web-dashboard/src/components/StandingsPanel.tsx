@@ -1,18 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
-import { fetchStandings } from "../api";
+import { useStandings } from "../data";
+import { formatTime } from "../format";
+import { Skeleton } from "../ui/Skeleton";
 
-export function StandingsPanel({ groupId }: { groupId: string | null }) {
-  const { data, dataUpdatedAt } = useQuery({
-    queryKey: ["standings", groupId],
-    queryFn: () => fetchStandings(groupId!),
-    enabled: groupId !== null,
-  });
+export function StandingsPanel({ groupId, title = "Classificação" }: { groupId: string | null; title?: string }) {
+  const { data, isLoading, dataUpdatedAt } = useStandings(groupId);
 
   return (
     <div className="panel">
-      <h2>Classificação</h2>
-      {!groupId && <p className="empty">Nenhum grupo ainda — agende uma partida com group_id.</p>}
-      {groupId && !data && <p className="empty">Sem resultados processados neste grupo ainda.</p>}
+      <h2>{title}</h2>
+      {!groupId && <p className="empty">A classificação aparece quando a primeira partida for agendada.</p>}
+      {groupId && isLoading && <Skeleton lines={4} />}
+      {groupId && !isLoading && !data && (
+        <p className="empty">Ainda sem resultados processados — encerre uma partida para gerar a tabela.</p>
+      )}
       {data && (
         <>
           <table>
@@ -20,11 +20,11 @@ export function StandingsPanel({ groupId }: { groupId: string | null }) {
               <tr>
                 <th>#</th>
                 <th className="left">Time</th>
-                <th>P</th>
-                <th>V</th>
-                <th>E</th>
-                <th>D</th>
-                <th>SG</th>
+                <th title="Pontos">P</th>
+                <th title="Vitórias">V</th>
+                <th title="Empates">E</th>
+                <th title="Derrotas">D</th>
+                <th title="Saldo de gols">SG</th>
               </tr>
             </thead>
             <tbody>
@@ -41,9 +41,7 @@ export function StandingsPanel({ groupId }: { groupId: string | null }) {
               ))}
             </tbody>
           </table>
-          <p className="meta">
-            Projeção CQRS atualizada só por eventos · sync {new Date(dataUpdatedAt).toLocaleTimeString()}
-          </p>
+          <p className="meta">Atualizada às {formatTime(new Date(dataUpdatedAt).toISOString())}</p>
         </>
       )}
     </div>
