@@ -1,6 +1,7 @@
 package com.championship.inscricoes.application;
 
 import com.championship.inscricoes.domain.Campeonato;
+import com.championship.inscricoes.domain.CampeonatoFormato;
 import com.championship.inscricoes.domain.Inscricao;
 import com.championship.inscricoes.domain.Time;
 import com.championship.inscricoes.infrastructure.messaging.DomainEventWriter;
@@ -34,8 +35,37 @@ public class InscricaoService {
     }
 
     @Transactional
-    public Campeonato criarCampeonato(String nome) {
-        return campeonatoRepository.save(Campeonato.criar(nome));
+    public Campeonato criarCampeonato(String nome, CampeonatoFormato formato) {
+        return campeonatoRepository.save(Campeonato.criar(nome, formato));
+    }
+
+    /** ABERTO/SORTEADO -> SORTEADO: o dashboard chama após gerar os confrontos no partidas-service. */
+    @Transactional
+    public Campeonato marcarSorteado(UUID campeonatoId) {
+        Campeonato campeonato = buscar(campeonatoId);
+        campeonato.sortear();
+        return campeonatoRepository.save(campeonato);
+    }
+
+    /** SORTEADO -> ABERTO: reabre inscrições (o sorteio é descartado no partidas-service). */
+    @Transactional
+    public Campeonato reabrirInscricoes(UUID campeonatoId) {
+        Campeonato campeonato = buscar(campeonatoId);
+        campeonato.reabrirInscricoes();
+        return campeonatoRepository.save(campeonato);
+    }
+
+    /** SORTEADO -> EM_ANDAMENTO: trava inscrições e chaveamento. */
+    @Transactional
+    public Campeonato iniciarCampeonato(UUID campeonatoId) {
+        Campeonato campeonato = buscar(campeonatoId);
+        campeonato.iniciar();
+        return campeonatoRepository.save(campeonato);
+    }
+
+    private Campeonato buscar(UUID campeonatoId) {
+        return campeonatoRepository.findById(campeonatoId)
+                .orElseThrow(() -> new IllegalArgumentException("campeonato nao encontrado: " + campeonatoId));
     }
 
     @Transactional(readOnly = true)

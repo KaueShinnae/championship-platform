@@ -25,6 +25,9 @@ class PartidaServiceTest {
     @Mock
     private DomainEventWriter domainEventWriter;
 
+    @Mock
+    private ChaveamentoService chaveamentoService;
+
     @InjectMocks
     private PartidaService partidaService;
 

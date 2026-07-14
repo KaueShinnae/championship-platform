@@ -1,23 +1,167 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import {
+  Championship,
+  ChampionshipFormat,
+  descartarConfrontos,
+  gerarConfrontos,
+  iniciarCampeonato,
+  reabrirCampeonato,
+  sortearCampeonato,
+} from "../api";
+import { Bracket } from "../components/Bracket";
 import { MatchList } from "../components/MatchCard";
-import { EnrollTeamForm, ScheduleMatchForm } from "../components/OrganizerForms";
+import { EnrollTeamForm } from "../components/OrganizerForms";
 import { StandingsPanel } from "../components/StandingsPanel";
+import { CHAMPIONSHIP_STATUS_LABEL } from "../components/TournamentGrid";
 import { buildGroupLabels, sortMatches, useChampionships, useEnrollments, useMatches } from "../data";
 import { formatDate, formatDateTime } from "../format";
 import { useOrganizer } from "../organizer";
 import { Skeleton } from "../ui/Skeleton";
-import { CHAMPIONSHIP_STATUS_LABEL } from "../components/TournamentGrid";
+import { useToast } from "../ui/toast";
 
-const TABS = [
-  { id: "visao", label: "Visão geral" },
-  { id: "partidas", label: "Partidas" },
-  { id: "classificacao", label: "Classificação" },
-  { id: "times", label: "Times" },
-  { id: "jogadores", label: "Jogadores" },
-] as const;
+const FORMAT_LABEL: Record<ChampionshipFormat, string> = {
+  GRUPOS_PLAYOFFS: "Grupos + Playoffs",
+  PLAYOFFS: "Playoffs direto",
+  PONTOS_CORRIDOS: "Pontos corridos",
+};
 
-type TabId = (typeof TABS)[number]["id"];
+const MIN_TEAMS: Record<ChampionshipFormat, number> = {
+  GRUPOS_PLAYOFFS: 6,
+  PLAYOFFS: 2,
+  PONTOS_CORRIDOS: 3,
+};
+
+const STEPS = ["Inscrições", "Sorteio", "Competição", "Campeão"];
+const STEP_BY_STATUS: Record<Championship["status"], number> = {
+  ABERTO: 0,
+  SORTEADO: 1,
+  EM_ANDAMENTO: 2,
+  ENCERRADO: 3,
+};
+
+function Stepper({ status }: { status: Championship["status"] }) {
+  const current = STEP_BY_STATUS[status];
+  return (
+    <ol className="stepper" aria-label="Etapa do torneio">
+      {STEPS.map((label, index) => (
+        <li key={label} className={index < current ? "done" : index === current ? "current" : ""}>
+          {label}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Painel de operação do organizador: sortear, re-sortear, reabrir e iniciar. */
+function SetupPanel({
+  championship,
+  confirmedTeams,
+}: {
+  championship: Championship;
+  confirmedTeams: { team_id: string; name: string }[];
+}) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["championships"] });
+    queryClient.invalidateQueries({ queryKey: ["matches"] });
+  };
+
+  const sortear = useMutation({
+    mutationFn: async () => {
+      await gerarConfrontos(championship.id, championship.formato, confirmedTeams);
+      return sortearCampeonato(championship.id);
+    },
+    onSuccess: () => {
+      refresh();
+      toast("success", "Confrontos sorteados — revise e inicie o torneio");
+    },
+    onError: (error) => toast("error", (error as Error).message),
+  });
+
+  const iniciar = useMutation({
+    mutationFn: () => iniciarCampeonato(championship.id),
+    onSuccess: () => {
+      refresh();
+      toast("success", "Torneio iniciado — boa competição!");
+    },
+    onError: (error) => toast("error", (error as Error).message),
+  });
+
+  const reabrir = useMutation({
+    mutationFn: async () => {
+      await descartarConfrontos(championship.id);
+      return reabrirCampeonato(championship.id);
+    },
+    onSuccess: () => {
+      refresh();
+      toast("success", "Inscrições reabertas — o sorteio foi descartado");
+    },
+    onError: (error) => toast("error", (error as Error).message),
+  });
+
+  const minimo = MIN_TEAMS[championship.formato];
+  const faltam = Math.max(0, minimo - confirmedTeams.length);
+  const busy = sortear.isPending || iniciar.isPending || reabrir.isPending;
+
+  if (championship.status === "ABERTO") {
+    return (
+      <div className="panel setup-panel">
+        <h2>Inscrições abertas</h2>
+        <p className="prose">
+          {confirmedTeams.length} de {minimo} time{minimo === 1 ? "" : "s"} mínimo{minimo === 1 ? "" : "s"}{" "}
+          confirmado{confirmedTeams.length === 1 ? "" : "s"} para o formato{" "}
+          <strong>{FORMAT_LABEL[championship.formato]}</strong>.
+        </p>
+        <div className="match-actions">
+          <button type="button" disabled={faltam > 0 || busy} onClick={() => sortear.mutate()}>
+            {sortear.isPending ? "Sorteando…" : "🔀 Sortear confrontos"}
+          </button>
+          {faltam > 0 && (
+            <span className="hint">
+              faltam {faltam} time{faltam === 1 ? "" : "s"} confirmado{faltam === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (championship.status === "SORTEADO") {
+    return (
+      <div className="panel setup-panel">
+        <h2>Sorteio realizado</h2>
+        <p className="prose">
+          Revise os confrontos nas abas abaixo. Ao iniciar, inscrições e chaveamento ficam travados.
+        </p>
+        <div className="match-actions">
+          <button type="button" className="ghost" disabled={busy} onClick={() => sortear.mutate()}>
+            {sortear.isPending ? "Sorteando…" : "🔀 Sortear novamente"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm("Inscrições e chaveamento ficam travados. Iniciar o torneio?")) {
+                iniciar.mutate();
+              }
+            }}
+          >
+            {iniciar.isPending ? "Iniciando…" : "▶ Iniciar torneio"}
+          </button>
+        </div>
+        <button type="button" className="link-button" disabled={busy} onClick={() => reabrir.mutate()}>
+          reabrir inscrições (descarta o sorteio)
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 export function TournamentDetailPage() {
   const { championshipId } = useParams<{ championshipId: string }>();
@@ -40,13 +184,21 @@ export function TournamentDetailPage() {
   const requestedGroup = searchParams.get("grupo");
   const selectedGroup = requestedGroup && groups.includes(requestedGroup) ? requestedGroup : groups[0] ?? null;
 
-  // grupo unico por campeonato no MVP: reusa o grupo das partidas
-  // existentes ou deriva um novo id estavel para o primeiro agendamento
-  const scheduleGroupId = useMemo(() => groups[0] ?? crypto.randomUUID(), [groups[0]]);
+  const temChaveamento = championship?.formato !== "PONTOS_CORRIDOS";
+  const temClassificacao = championship?.formato !== "PLAYOFFS";
 
-  const activeTab: TabId = (TABS.find((tab) => tab.id === searchParams.get("tab"))?.id ?? "visao") as TabId;
+  const tabs = [
+    { id: "visao", label: "Visão geral" },
+    { id: "partidas", label: "Partidas" },
+    ...(temClassificacao ? [{ id: "classificacao", label: "Classificação" }] : []),
+    ...(temChaveamento ? [{ id: "chaveamento", label: "Chaveamento" }] : []),
+    { id: "times", label: "Times" },
+    { id: "jogadores", label: "Jogadores" },
+  ];
 
-  const setTab = (tab: TabId) => {
+  const activeTab = tabs.find((tab) => tab.id === searchParams.get("tab"))?.id ?? "visao";
+
+  const setTab = (tab: string) => {
     setSearchParams(tab === "visao" ? {} : { tab }, { replace: true });
   };
 
@@ -90,14 +242,33 @@ export function TournamentDetailPage() {
           </span>
         </div>
         <p className="subtitle">
-          criado em {formatDate(championship.created_at)} · {confirmedTeams.length} time
-          {confirmedTeams.length === 1 ? "" : "s"} confirmado{confirmedTeams.length === 1 ? "" : "s"} ·{" "}
-          {matches.length} partida{matches.length === 1 ? "" : "s"}
+          {FORMAT_LABEL[championship.formato]} · criado em {formatDate(championship.created_at)} ·{" "}
+          {confirmedTeams.length} time{confirmedTeams.length === 1 ? "" : "s"} confirmado
+          {confirmedTeams.length === 1 ? "" : "s"} · {matches.length} partida{matches.length === 1 ? "" : "s"}
         </p>
       </div>
 
+      <Stepper status={championship.status} />
+
+      {championship.status === "ENCERRADO" && championship.campeao_nome && (
+        <div className="champion-banner">
+          🏆 Campeão: <strong>{championship.campeao_nome}</strong>
+        </div>
+      )}
+
+      {organizer && <SetupPanel championship={championship} confirmedTeams={confirmedTeams} />}
+
+      {!organizer && championship.status === "ABERTO" && (
+        <div className="panel">
+          <p className="prose">
+            Inscrições em andamento — {confirmedTeams.length} time{confirmedTeams.length === 1 ? "" : "s"}{" "}
+            confirmado{confirmedTeams.length === 1 ? "" : "s"}. Os confrontos aparecem aqui após o sorteio.
+          </p>
+        </div>
+      )}
+
       <div className="tabs" role="tablist">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -122,12 +293,7 @@ export function TournamentDetailPage() {
           <div className="two-col">
             <section className="panel">
               <h2>Próxima partida</h2>
-              {upcoming.length === 0 && (
-                <p className="empty">
-                  Nenhuma partida agendada.
-                  {organizer && " Use a aba Partidas para agendar."}
-                </p>
-              )}
+              {upcoming.length === 0 && <p className="empty">Nenhuma partida agendada.</p>}
               {upcoming[0] && (
                 <>
                   <MatchList matches={[upcoming[0]]} />
@@ -135,7 +301,20 @@ export function TournamentDetailPage() {
                 </>
               )}
             </section>
-            <StandingsPanel groupId={selectedGroup} title="Classificação" />
+            {temClassificacao ? (
+              <StandingsPanel groupId={selectedGroup} title="Classificação" />
+            ) : (
+              <section className="panel">
+                <h2>Chaveamento</h2>
+                <p className="prose">
+                  Mata-mata em andamento — acompanhe os confrontos na aba{" "}
+                  <button type="button" className="link-button" onClick={() => setTab("chaveamento")}>
+                    Chaveamento
+                  </button>
+                  .
+                </p>
+              </section>
+            )}
           </div>
           {finished.length > 0 && (
             <section className="panel">
@@ -147,27 +326,20 @@ export function TournamentDetailPage() {
       )}
 
       {activeTab === "partidas" && (
-        <>
-          {organizer && (
-            <div className="panel">
-              <ScheduleMatchForm championshipId={championship.id} groupId={scheduleGroupId} teams={confirmedTeams} />
-            </div>
-          )}
-          <section className="panel">
-            <h2>Todas as partidas</h2>
-            <MatchList
-              matches={matches}
-              emptyMessage={
-                organizer
-                  ? "Nenhuma partida ainda — agende a primeira no formulário acima."
-                  : "Nenhuma partida agendada ainda."
-              }
-            />
-          </section>
-        </>
+        <section className="panel">
+          <h2>Todas as partidas</h2>
+          <MatchList
+            matches={matches}
+            emptyMessage={
+              championship.status === "ABERTO"
+                ? "As partidas são geradas pelo sorteio, quando as inscrições fecharem."
+                : "Nenhuma partida ainda."
+            }
+          />
+        </section>
       )}
 
-      {activeTab === "classificacao" && (
+      {activeTab === "classificacao" && temClassificacao && (
         <>
           {groups.length > 1 && (
             <div className="tabs sub" role="tablist">
@@ -190,6 +362,17 @@ export function TournamentDetailPage() {
             title={groups.length > 1 ? groupLabels.get(selectedGroup ?? "") ?? "Classificação" : "Classificação"}
           />
         </>
+      )}
+
+      {activeTab === "chaveamento" && temChaveamento && (
+        <section className="panel">
+          <h2>Chaveamento</h2>
+          {championship.status === "ABERTO" ? (
+            <p className="empty">O chaveamento é montado no sorteio, quando as inscrições fecharem.</p>
+          ) : (
+            <Bracket matches={matches} formato={championship.formato} teamCount={confirmedTeams.length} />
+          )}
+        </section>
       )}
 
       {activeTab === "jogadores" && (
@@ -221,7 +404,7 @@ export function TournamentDetailPage() {
 
       {activeTab === "times" && (
         <>
-          {organizer && (
+          {organizer && championship.status === "ABERTO" && (
             <div className="panel">
               <EnrollTeamForm championshipId={championship.id} />
             </div>
@@ -231,7 +414,7 @@ export function TournamentDetailPage() {
             {enrollments.length === 0 && (
               <p className="empty">
                 Nenhum time inscrito ainda.
-                {organizer ? " Inscreva o primeiro no formulário acima." : ""}
+                {organizer && championship.status === "ABERTO" ? " Inscreva o primeiro no formulário acima." : ""}
               </p>
             )}
             <ul className="enrollments">

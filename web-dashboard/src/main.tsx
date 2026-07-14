@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 import App from "./App";
 import { AccountPage } from "./pages/AccountPage";
+import { CreateTournamentPage } from "./pages/CreateTournamentPage";
 import { HomePage } from "./pages/HomePage";
 import { MatchDetailPage } from "./pages/MatchDetailPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
@@ -28,6 +29,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: "torneios", element: <TournamentsPage /> },
+      { path: "torneios/novo", element: <CreateTournamentPage /> },
       { path: "torneios/:championshipId", element: <TournamentDetailPage /> },
       { path: "partidas/:matchId", element: <MatchDetailPage /> },
       { path: "monitoramento", element: <MonitoringPage /> },

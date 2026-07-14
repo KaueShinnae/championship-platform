@@ -11,4 +11,6 @@ public interface PartidaRepository extends JpaRepository<Partida, UUID> {
     List<Partida> findAllByOrderByScheduledAtDesc();
 
     List<Partida> findByGroupIdOrderByScheduledAtDesc(UUID groupId);
+
+    List<Partida> findByCampeonatoId(UUID campeonatoId);
 }

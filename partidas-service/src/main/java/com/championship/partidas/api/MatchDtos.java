@@ -1,13 +1,18 @@
 package com.championship.partidas.api;
 
+import com.championship.partidas.domain.FormatoTorneio;
 import com.championship.partidas.domain.Partida;
+import com.championship.partidas.domain.PartidaStage;
 import com.championship.partidas.domain.PartidaStatus;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public class MatchDtos {
@@ -29,6 +34,19 @@ public class MatchDtos {
     ) {
     }
 
+    public record TimeSorteio(
+            @NotNull UUID teamId,
+            @NotBlank @Size(max = 100) String name
+    ) {
+    }
+
+    public record GerarConfrontosRequest(
+            @NotNull UUID championshipId,
+            @NotNull FormatoTorneio formato,
+            @NotEmpty List<@Valid TimeSorteio> teams
+    ) {
+    }
+
     public record TeamView(UUID teamId, String name, Integer score) {
     }
 
@@ -41,7 +59,10 @@ public class MatchDtos {
             PartidaStatus status,
             Instant scheduledAt,
             Instant startedAt,
-            Instant playedAt
+            Instant playedAt,
+            PartidaStage stage,
+            Integer round,
+            Integer bracketPos
     ) {
         public static PartidaResponse from(Partida partida) {
             return new PartidaResponse(
@@ -53,7 +74,10 @@ public class MatchDtos {
                     partida.getStatus(),
                     partida.getScheduledAt(),
                     partida.getStartedAt(),
-                    partida.getPlayedAt());
+                    partida.getPlayedAt(),
+                    partida.getStage(),
+                    partida.getRound(),
+                    partida.getBracketPos());
         }
     }
 

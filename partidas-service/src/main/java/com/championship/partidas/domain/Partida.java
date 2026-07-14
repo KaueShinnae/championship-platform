@@ -52,13 +52,24 @@ public class Partida {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private PartidaStage stage;
+
+    @Column(name = "round")
+    private Integer round;
+
+    @Column(name = "bracket_pos")
+    private Integer bracketPos;
+
     protected Partida() {
     }
 
     private Partida(UUID id, UUID campeonatoId, UUID groupId,
                      UUID homeTeamId, String homeTeamName,
                      UUID awayTeamId, String awayTeamName,
-                     Instant scheduledAt) {
+                     Instant scheduledAt,
+                     PartidaStage stage, Integer round, Integer bracketPos) {
         this.id = id;
         this.campeonatoId = campeonatoId;
         this.groupId = groupId;
@@ -69,12 +80,34 @@ public class Partida {
         this.status = PartidaStatus.AGENDADA;
         this.scheduledAt = scheduledAt;
         this.createdAt = Instant.now();
+        this.stage = stage;
+        this.round = round;
+        this.bracketPos = bracketPos;
     }
 
     public static Partida agendar(UUID campeonatoId, UUID groupId,
                                    UUID homeTeamId, String homeTeamName,
                                    UUID awayTeamId, String awayTeamName,
                                    Instant scheduledAt) {
+        validarTimes(homeTeamId, homeTeamName, awayTeamId, awayTeamName);
+        return new Partida(UUID.randomUUID(), campeonatoId, groupId,
+                homeTeamId, homeTeamName, awayTeamId, awayTeamName,
+                scheduledAt != null ? scheduledAt : Instant.now(),
+                groupId != null ? PartidaStage.GRUPOS : null, null, null);
+    }
+
+    /** Partida de mata-mata: pertence a uma rodada e a uma posição do bracket. */
+    public static Partida dePlayoff(UUID campeonatoId, int round, int bracketPos,
+                                     UUID homeTeamId, String homeTeamName,
+                                     UUID awayTeamId, String awayTeamName) {
+        validarTimes(homeTeamId, homeTeamName, awayTeamId, awayTeamName);
+        return new Partida(UUID.randomUUID(), campeonatoId, null,
+                homeTeamId, homeTeamName, awayTeamId, awayTeamName,
+                Instant.now(), PartidaStage.PLAYOFF, round, bracketPos);
+    }
+
+    private static void validarTimes(UUID homeTeamId, String homeTeamName,
+                                      UUID awayTeamId, String awayTeamName) {
         if (homeTeamId == null || awayTeamId == null) {
             throw new IllegalArgumentException("home_team_id e away_team_id sao obrigatorios");
         }
@@ -84,9 +117,6 @@ public class Partida {
         if (isBlank(homeTeamName) || isBlank(awayTeamName)) {
             throw new IllegalArgumentException("home_team_name e away_team_name sao obrigatorios");
         }
-        return new Partida(UUID.randomUUID(), campeonatoId, groupId,
-                homeTeamId, homeTeamName, awayTeamId, awayTeamName,
-                scheduledAt != null ? scheduledAt : Instant.now());
     }
 
     public void iniciar() {
@@ -104,6 +134,10 @@ public class Partida {
         }
         if (homeScore < 0 || awayScore < 0) {
             throw new IllegalArgumentException("placar nao pode ser negativo");
+        }
+        if (stage == PartidaStage.PLAYOFF && homeScore == awayScore) {
+            throw new IllegalArgumentException(
+                    "partida eliminatoria precisa de um vencedor — registre o placar final ja incluindo a decisao (prorrogacao/penaltis)");
         }
         this.homeScore = homeScore;
         this.awayScore = awayScore;
@@ -165,5 +199,26 @@ public class Partida {
 
     public Instant getPlayedAt() {
         return playedAt;
+    }
+
+    public PartidaStage getStage() {
+        return stage;
+    }
+
+    public Integer getRound() {
+        return round;
+    }
+
+    public Integer getBracketPos() {
+        return bracketPos;
+    }
+
+    /** Id do vencedor — só para partidas finalizadas sem empate (mata-mata). */
+    public UUID vencedorId() {
+        return homeScore > awayScore ? homeTeamId : awayTeamId;
+    }
+
+    public String vencedorNome() {
+        return homeScore > awayScore ? homeTeamName : awayTeamName;
     }
 }

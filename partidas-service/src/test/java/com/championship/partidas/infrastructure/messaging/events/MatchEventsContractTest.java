@@ -69,6 +69,33 @@ class MatchEventsContractTest {
     }
 
     @Test
+    void serializaChampionshipCompletedComSchemaDocumentado() throws Exception {
+        UUID championshipId = UUID.randomUUID();
+        UUID championId = UUID.randomUUID();
+
+        ChampionshipCompletedPayload payload = new ChampionshipCompletedPayload(
+                championshipId, new TeamRef(championId, "Timaço FC"), Instant.parse("2026-07-16T12:00:00Z"));
+        DomainEventEnvelope<ChampionshipCompletedPayload> envelope =
+                DomainEventEnvelope.of(championshipId, ChampionshipCompletedPayload.TYPE, payload);
+
+        String json = objectMapper.writeValueAsString(envelope);
+        JsonNode node = objectMapper.readTree(json);
+
+        assertThat(node.get("type").asText()).isEqualTo("championship.completed.v1");
+        assertThat(node.get("aggregate_id").asText()).isEqualTo(championshipId.toString());
+        JsonNode payloadJson = node.get("payload");
+        assertThat(payloadJson.get("championship_id").asText()).isEqualTo(championshipId.toString());
+        assertThat(payloadJson.get("champion").get("team_id").asText()).isEqualTo(championId.toString());
+        assertThat(payloadJson.get("champion").get("name").asText()).isEqualTo("Timaço FC");
+        assertThat(payloadJson.get("completed_at").asText()).contains("2026-07-16");
+
+        DomainEventEnvelope<ChampionshipCompletedPayload> roundTrip = objectMapper.readValue(
+                json, objectMapper.getTypeFactory().constructParametricType(
+                        DomainEventEnvelope.class, ChampionshipCompletedPayload.class));
+        assertThat(roundTrip.payload().champion().name()).isEqualTo("Timaço FC");
+    }
+
+    @Test
     void serializaMatchFinishedComSchemaDocumentado() throws Exception {
         UUID matchId = UUID.randomUUID();
         UUID championshipId = UUID.randomUUID();

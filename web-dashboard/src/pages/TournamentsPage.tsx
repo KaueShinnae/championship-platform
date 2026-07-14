@@ -1,5 +1,4 @@
 import { Link } from "react-router-dom";
-import { CreateChampionshipForm } from "../components/OrganizerForms";
 import { TournamentGrid } from "../components/TournamentGrid";
 import { useOrganizer } from "../organizer";
 
@@ -9,20 +8,23 @@ export function TournamentsPage() {
   return (
     <>
       <div className="page-header">
-        <h2 className="page-title">Torneios</h2>
+        <div className="page-title-row">
+          <h2 className="page-title">Torneios</h2>
+          {organizer && (
+            <Link to="/torneios/novo" className="button-link">
+              + Criar torneio
+            </Link>
+          )}
+        </div>
         <p className="subtitle">Todos os campeonatos da plataforma — clique num torneio para gerenciar e acompanhar.</p>
       </div>
-
-      {organizer && (
-        <div className="panel">
-          <CreateChampionshipForm />
-        </div>
-      )}
 
       <TournamentGrid
         emptyMessage={
           organizer ? (
-            "Nenhum torneio ainda. Crie o primeiro no formulário acima."
+            <>
+              Nenhum torneio ainda. <Link to="/torneios/novo">Crie o primeiro</Link>.
+            </>
           ) : (
             <>
               Nenhum torneio ainda. Entre como organizador na página <Link to="/conta">Conta</Link> para criar o

@@ -7,6 +7,7 @@ import { Skeleton } from "../ui/Skeleton";
 
 export const CHAMPIONSHIP_STATUS_LABEL: Record<Championship["status"], string> = {
   ABERTO: "Inscrições abertas",
+  SORTEADO: "Sorteio realizado",
   EM_ANDAMENTO: "Em andamento",
   ENCERRADO: "Encerrado",
 };
@@ -53,7 +54,11 @@ export function TournamentGrid({ emptyMessage }: { emptyMessage: ReactNode }) {
                 {championshipMatches.length === 1 ? "" : "s"}
                 {liveCount > 0 && <span className="live-inline"> · ● {liveCount} ao vivo</span>}
               </p>
-              <p className="meta">criado em {formatDate(championship.created_at)}</p>
+              {championship.status === "ENCERRADO" && championship.campeao_nome ? (
+                <p className="meta champion-inline">🏆 {championship.campeao_nome}</p>
+              ) : (
+                <p className="meta">criado em {formatDate(championship.created_at)}</p>
+              )}
             </Link>
           </li>
         );

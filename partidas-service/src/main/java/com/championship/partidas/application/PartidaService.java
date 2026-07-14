@@ -20,10 +20,13 @@ public class PartidaService {
 
     private final PartidaRepository partidaRepository;
     private final DomainEventWriter domainEventWriter;
+    private final ChaveamentoService chaveamentoService;
 
-    public PartidaService(PartidaRepository partidaRepository, DomainEventWriter domainEventWriter) {
+    public PartidaService(PartidaRepository partidaRepository, DomainEventWriter domainEventWriter,
+                           ChaveamentoService chaveamentoService) {
         this.partidaRepository = partidaRepository;
         this.domainEventWriter = domainEventWriter;
+        this.chaveamentoService = chaveamentoService;
     }
 
     /**
@@ -81,6 +84,11 @@ public class PartidaService {
                 new TeamScore(partida.getHomeTeamId(), partida.getHomeTeamName(), partida.getHomeScore()),
                 new TeamScore(partida.getAwayTeamId(), partida.getAwayTeamName(), partida.getAwayScore()),
                 partida.getPlayedAt()));
+
+        // avanço automático de fase (mesma transação): vencedor ocupa o slot
+        // seguinte do bracket, grupos completos semeiam os playoffs, e o
+        // campeão publica championship.completed.v1
+        chaveamentoService.aoFinalizar(partida);
 
         return partida;
     }

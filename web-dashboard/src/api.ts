@@ -17,6 +17,9 @@ export interface Match {
   scheduled_at: string;
   started_at: string | null;
   played_at: string | null;
+  stage: "GRUPOS" | "PLAYOFF" | null;
+  round: number | null;
+  bracket_pos: number | null;
 }
 
 export interface StandingEntry {
@@ -75,10 +78,14 @@ export function fetchEventFeed(): Promise<FeedEntry[]> {
 
 // ---- area do organizador (inscricoes-service + agendamento) ----
 
+export type ChampionshipFormat = "GRUPOS_PLAYOFFS" | "PLAYOFFS" | "PONTOS_CORRIDOS";
+
 export interface Championship {
   id: string;
   nome: string;
-  status: "ABERTO" | "EM_ANDAMENTO" | "ENCERRADO";
+  status: "ABERTO" | "SORTEADO" | "EM_ANDAMENTO" | "ENCERRADO";
+  formato: ChampionshipFormat;
+  campeao_nome: string | null;
   created_at: string;
 }
 
@@ -113,8 +120,44 @@ export function fetchChampionships(): Promise<Championship[]> {
   return getJson<Championship[]>("/api/inscricoes/campeonatos");
 }
 
-export function createChampionship(nome: string): Promise<Championship> {
-  return postJson<Championship>("/api/inscricoes/campeonatos", { nome });
+export function createChampionship(nome: string, formato: ChampionshipFormat): Promise<Championship> {
+  return postJson<Championship>("/api/inscricoes/campeonatos", { nome, formato });
+}
+
+// ---- ciclo de vida do torneio (sorteio -> início -> campeão) ----
+
+export function sortearCampeonato(championshipId: string): Promise<Championship> {
+  return postJson<Championship>(`/api/inscricoes/campeonatos/${championshipId}/sortear`, {});
+}
+
+export function reabrirCampeonato(championshipId: string): Promise<Championship> {
+  return postJson<Championship>(`/api/inscricoes/campeonatos/${championshipId}/reabrir`, {});
+}
+
+export function iniciarCampeonato(championshipId: string): Promise<Championship> {
+  return postJson<Championship>(`/api/inscricoes/campeonatos/${championshipId}/iniciar`, {});
+}
+
+/** Sorteia os times e gera todos os confrontos no partidas-service. */
+export function gerarConfrontos(
+  championshipId: string,
+  formato: ChampionshipFormat,
+  teams: { team_id: string; name: string }[],
+): Promise<Match[]> {
+  return postJson<Match[]>("/api/partidas/matches/generate", {
+    championship_id: championshipId,
+    formato,
+    teams,
+  });
+}
+
+/** Descarta o sorteio no partidas-service (reabrir inscrições). */
+export async function descartarConfrontos(championshipId: string): Promise<void> {
+  const response = await fetch(`/api/partidas/matches/draw/${championshipId}`, { method: "DELETE" });
+  if (!response.ok && response.status !== 404) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error ?? `descartar sorteio falhou (${response.status})`);
+  }
 }
 
 export function fetchEnrollments(championshipId: string): Promise<Enrollment[]> {
@@ -123,24 +166,6 @@ export function fetchEnrollments(championshipId: string): Promise<Enrollment[]> 
 
 export function enrollTeam(championshipId: string, nome: string, jogadores: string[]): Promise<unknown> {
   return postJson(`/api/inscricoes/campeonatos/${championshipId}/times`, { nome, jogadores });
-}
-
-export function scheduleMatch(input: {
-  championshipId: string;
-  groupId: string;
-  home: { team_id: string; name: string };
-  away: { team_id: string; name: string };
-  scheduledAt: string | null; // ISO-8601; null = agora
-}): Promise<Match> {
-  return postJson<Match>("/api/partidas/matches", {
-    championship_id: input.championshipId,
-    group_id: input.groupId,
-    home_team_id: input.home.team_id,
-    home_team_name: input.home.name,
-    away_team_id: input.away.team_id,
-    away_team_name: input.away.name,
-    scheduled_at: input.scheduledAt,
-  });
 }
 
 export function startMatch(matchId: string): Promise<Match> {
