@@ -7,7 +7,7 @@ import { buildGroupLabels, sortMatches, useChampionships, useEnrollments, useMat
 import { formatDate, formatDateTime } from "../format";
 import { useOrganizer } from "../organizer";
 import { Skeleton } from "../ui/Skeleton";
-import { CHAMPIONSHIP_STATUS_LABEL } from "./TournamentsPage";
+import { CHAMPIONSHIP_STATUS_LABEL } from "../components/TournamentGrid";
 
 const TABS = [
   { id: "visao", label: "Visão geral" },

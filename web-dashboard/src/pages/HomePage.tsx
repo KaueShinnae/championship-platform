@@ -2,7 +2,9 @@ import { useQueries } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { fetchStandings } from "../api";
 import { MatchList } from "../components/MatchCard";
+import { TournamentGrid } from "../components/TournamentGrid";
 import { buildGroupLabels, sortMatches, useAllEnrollments, useChampionships, useMatches } from "../data";
+import { useOrganizer } from "../organizer";
 import { Skeleton } from "../ui/Skeleton";
 
 function StatTile({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
@@ -60,9 +62,31 @@ function GroupLeaders() {
 }
 
 export function HomePage() {
+  const organizer = useOrganizer();
   const { data: matches = [], isLoading: loadingMatches, isError } = useMatches();
   const { data: championships = [] } = useChampionships();
   const { byChampionship } = useAllEnrollments();
+
+  // Visitante não vê a visão geral agregada (isso é gestão): ele escolhe um
+  // torneio e acompanha tudo dentro da página daquele torneio.
+  if (!organizer) {
+    return (
+      <>
+        <div className="page-header">
+          <h2 className="page-title">Início</h2>
+          <p className="subtitle">Escolha um torneio para acompanhar partidas, times e classificação.</p>
+        </div>
+
+        {isError && (
+          <div className="banner-error">
+            Não foi possível falar com os serviços — rode <code>npm run dev</code> na raiz do projeto.
+          </div>
+        )}
+
+        <TournamentGrid emptyMessage="Nenhum torneio disponível ainda. Volte em breve!" />
+      </>
+    );
+  }
 
   const championshipNames = new Map(championships.map((championship) => [championship.id, championship.nome]));
   const confirmedTeams = byChampionship.reduce(
@@ -115,7 +139,7 @@ export function HomePage() {
             <MatchList
               matches={upcoming}
               championshipNames={championshipNames}
-              emptyMessage="Nenhuma partida agendada — agende pela página do torneio."
+              emptyMessage="Nenhuma partida agendada."
             />
           )}
         </section>

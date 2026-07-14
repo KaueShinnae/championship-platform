@@ -3,17 +3,19 @@ import { useMatches } from "./data";
 import { useOrganizer } from "./organizer";
 import { ToastProvider } from "./ui/toast";
 
-// Navegação enxuta: o app é de gestão de torneios, então times, jogadores e
-// partidas vivem dentro de cada torneio — nada de listas globais misturadas.
-const NAV_ITEMS = [
-  { to: "/", label: "Início", end: true },
-  { to: "/torneios", label: "Torneios" },
-];
-
 export default function App() {
   const organizer = useOrganizer();
   const { data: matches = [] } = useMatches();
   const liveCount = matches.filter((match) => match.status === "EM_ANDAMENTO").length;
+
+  // Navegação por papel: o visitante escolhe um torneio no Início e acompanha
+  // só aquele torneio; a visão geral (Torneios, Monitoramento) é do organizador.
+  const navItems = organizer
+    ? [
+        { to: "/", label: "Início", end: true },
+        { to: "/torneios", label: "Torneios" },
+      ]
+    : [{ to: "/", label: "Início", end: true }];
 
   return (
     <ToastProvider>
@@ -30,7 +32,7 @@ export default function App() {
               </Link>
             )}
             <Link to="/conta" className={`session-chip ${organizer ? "organizer" : ""}`}>
-              {organizer ? "Organizador" : "Visitante"}
+              {organizer ? "Organizador" : "Conta"}
             </Link>
           </div>
         </header>
@@ -38,14 +40,17 @@ export default function App() {
         <div className="layout">
           <aside className="sidebar">
             <nav aria-label="Seções">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.end}>
                   {item.label}
                 </NavLink>
               ))}
-              <div className="nav-separator" />
-              {organizer && <NavLink to="/monitoramento">Monitoramento</NavLink>}
-              <NavLink to="/conta">Conta</NavLink>
+              {organizer && (
+                <>
+                  <div className="nav-separator" />
+                  <NavLink to="/monitoramento">Monitoramento</NavLink>
+                </>
+              )}
             </nav>
           </aside>
 
