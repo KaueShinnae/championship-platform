@@ -2,16 +2,30 @@ import { useStandings } from "../data";
 import { formatTime } from "../format";
 import { Skeleton } from "../ui/Skeleton";
 
-export function StandingsPanel({ groupId, title = "Classificação" }: { groupId: string | null; title?: string }) {
+/**
+ * Tabela de classificação. `qualifyCount` marca a zona que importa: quem
+ * avança ao mata-mata (grupos) ou o campeão em potencial (pontos corridos).
+ */
+export function StandingsPanel({
+  groupId,
+  title = "Classificação",
+  qualifyCount,
+  highlightTeamId,
+}: {
+  groupId: string | null;
+  title?: string;
+  qualifyCount?: number;
+  highlightTeamId?: string | null;
+}) {
   const { data, isLoading, dataUpdatedAt } = useStandings(groupId);
 
   return (
     <div className="panel">
       <h2>{title}</h2>
-      {!groupId && <p className="empty">A classificação aparece quando a primeira partida for agendada.</p>}
+      {!groupId && <p className="empty">A classificação aparece após o sorteio dos confrontos.</p>}
       {groupId && isLoading && <Skeleton lines={4} />}
       {groupId && !isLoading && !data && (
-        <p className="empty">Ainda sem resultados processados — encerre uma partida para gerar a tabela.</p>
+        <p className="empty">Ainda sem resultados — a tabela aparece quando o primeiro for registrado.</p>
       )}
       {data && (
         <>
@@ -21,27 +35,42 @@ export function StandingsPanel({ groupId, title = "Classificação" }: { groupId
                 <th>#</th>
                 <th className="left">Time</th>
                 <th title="Pontos">P</th>
-                <th title="Vitórias">V</th>
-                <th title="Empates">E</th>
-                <th title="Derrotas">D</th>
+                <th title="Vitórias" className="hide-narrow">V</th>
+                <th title="Empates" className="hide-narrow">E</th>
+                <th title="Derrotas" className="hide-narrow">D</th>
                 <th title="Saldo de gols">SG</th>
               </tr>
             </thead>
             <tbody>
-              {data.standings.map((entry, index) => (
-                <tr key={entry.team_id} className={index === 0 ? "leader" : ""}>
-                  <td>{index + 1}</td>
-                  <td className="left">{entry.team_name}</td>
-                  <td className="points">{entry.points}</td>
-                  <td>{entry.wins}</td>
-                  <td>{entry.draws}</td>
-                  <td>{entry.losses}</td>
-                  <td>{entry.goals_for - entry.goals_against}</td>
-                </tr>
-              ))}
+              {data.standings.map((entry, index) => {
+                const classes = [
+                  qualifyCount !== undefined && index < qualifyCount ? "qualify" : "",
+                  index === 0 ? "leader" : "",
+                  highlightTeamId === entry.team_id ? "my-team-row" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return (
+                  <tr key={entry.team_id} className={classes}>
+                    <td>{index + 1}</td>
+                    <td className="left">{entry.team_name}</td>
+                    <td className="points">{entry.points}</td>
+                    <td className="hide-narrow">{entry.wins}</td>
+                    <td className="hide-narrow">{entry.draws}</td>
+                    <td className="hide-narrow">{entry.losses}</td>
+                    <td>{entry.goals_for - entry.goals_against}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-          <p className="meta">Atualizada às {formatTime(new Date(dataUpdatedAt).toISOString())}</p>
+          <p className="meta">
+            Atualizada às {formatTime(new Date(dataUpdatedAt).toISOString())}
+            {qualifyCount !== undefined && qualifyCount > 1 && (
+              <> · os {qualifyCount} primeiros avançam ao mata-mata</>
+            )}
+            {qualifyCount === 1 && <> · o líder ao fim da última rodada é o campeão</>}
+          </p>
         </>
       )}
     </div>

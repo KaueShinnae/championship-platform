@@ -14,7 +14,7 @@ export interface Match {
   home_team: TeamView;
   away_team: TeamView;
   status: "AGENDADA" | "EM_ANDAMENTO" | "FINALIZADA";
-  scheduled_at: string;
+  scheduled_at: string | null; // null = horário a definir
   started_at: string | null;
   played_at: string | null;
   stage: "GRUPOS" | "PLAYOFF" | null;
@@ -49,8 +49,23 @@ export interface FeedEntry {
   at: string;
 }
 
+// Sessão gravada pelo auth.ts; toda chamada anexa o token quando existir
+// (as leituras usam para calcular can_manage; as mutações exigem).
+const SESSION_STORAGE_KEY = "championship.session";
+
+function authHeaders(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return {};
+    const session = JSON.parse(raw) as { token?: string };
+    return session.token ? { Authorization: `Bearer ${session.token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: authHeaders() });
   if (!response.ok) {
     throw new Error(`${url} respondeu ${response.status}`);
   }
@@ -86,7 +101,40 @@ export interface Championship {
   status: "ABERTO" | "SORTEADO" | "EM_ANDAMENTO" | "ENCERRADO";
   formato: ChampionshipFormat;
   campeao_nome: string | null;
+  can_manage: boolean;
+  is_dono: boolean;
+  sem_dono: boolean; // torneio legado, criado antes das contas
+  aprovacao_inscricoes: boolean; // capitães aguardam aprovação (true) ou entram direto
   created_at: string;
+}
+
+// ---- contas e sessão (inscricoes-service /auth) ----
+
+export interface SessionUser {
+  id: string;
+  nome: string;
+  email: string;
+}
+
+export interface SessionResponse {
+  usuario: SessionUser;
+  token: string;
+}
+
+export function registerAccount(nome: string, email: string, senha: string): Promise<SessionResponse> {
+  return postJson<SessionResponse>("/api/inscricoes/auth/register", { nome, email, senha });
+}
+
+export function loginAccount(email: string, senha: string): Promise<SessionResponse> {
+  return postJson<SessionResponse>("/api/inscricoes/auth/login", { email, senha });
+}
+
+export function fetchAdmins(championshipId: string): Promise<SessionUser[]> {
+  return getJson<SessionUser[]>(`/api/inscricoes/campeonatos/${championshipId}/admins`);
+}
+
+export function addAdmin(championshipId: string, email: string): Promise<SessionUser> {
+  return postJson<SessionUser>(`/api/inscricoes/campeonatos/${championshipId}/admins`, { email });
 }
 
 export interface PlayerView {
@@ -99,14 +147,26 @@ export interface Enrollment {
   time_id: string;
   time_nome: string;
   jogadores: PlayerView[];
-  status: "PENDENTE" | "CONFIRMADA";
+  status: "PENDENTE" | "CONFIRMADA" | "RECUSADA";
+  capitao_usuario_id: string | null; // preenchido = auto-inscrição de capitão
   confirmed_at: string | null;
+}
+
+/** Resposta da inscrição recém-criada (organizador ou capitão). */
+export interface EnrollmentCreated {
+  inscricao_id: string;
+  time_id: string;
+  time_nome: string;
+  campeonato_id: string;
+  status: "PENDENTE" | "CONFIRMADA" | "RECUSADA";
+  capitao_usuario_id: string | null;
+  created_at: string;
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -120,8 +180,16 @@ export function fetchChampionships(): Promise<Championship[]> {
   return getJson<Championship[]>("/api/inscricoes/campeonatos");
 }
 
-export function createChampionship(nome: string, formato: ChampionshipFormat): Promise<Championship> {
-  return postJson<Championship>("/api/inscricoes/campeonatos", { nome, formato });
+export function createChampionship(
+  nome: string,
+  formato: ChampionshipFormat,
+  aprovacaoInscricoes: boolean,
+): Promise<Championship> {
+  return postJson<Championship>("/api/inscricoes/campeonatos", {
+    nome,
+    formato,
+    aprovacao_inscricoes: aprovacaoInscricoes,
+  });
 }
 
 // ---- ciclo de vida do torneio (sorteio -> início -> campeão) ----
@@ -151,9 +219,24 @@ export function gerarConfrontos(
   });
 }
 
+/** Slot ocupado do bracket (inclui byes — time que avança direto). */
+export interface BracketSlot {
+  round: number;
+  slot: number;
+  team_id: string;
+  team_name: string;
+}
+
+export function fetchBracketSlots(championshipId: string): Promise<BracketSlot[]> {
+  return getJson<BracketSlot[]>(`/api/partidas/matches/draw/${championshipId}/slots`);
+}
+
 /** Descarta o sorteio no partidas-service (reabrir inscrições). */
 export async function descartarConfrontos(championshipId: string): Promise<void> {
-  const response = await fetch(`/api/partidas/matches/draw/${championshipId}`, { method: "DELETE" });
+  const response = await fetch(`/api/partidas/matches/draw/${championshipId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
   if (!response.ok && response.status !== 404) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error ?? `descartar sorteio falhou (${response.status})`);
@@ -164,18 +247,71 @@ export function fetchEnrollments(championshipId: string): Promise<Enrollment[]> 
   return getJson<Enrollment[]>(`/api/inscricoes/campeonatos/${championshipId}/times`);
 }
 
-export function enrollTeam(championshipId: string, nome: string, jogadores: string[]): Promise<unknown> {
-  return postJson(`/api/inscricoes/campeonatos/${championshipId}/times`, { nome, jogadores });
+export function enrollTeam(championshipId: string, nome: string, jogadores: string[]): Promise<EnrollmentCreated> {
+  return postJson<EnrollmentCreated>(`/api/inscricoes/campeonatos/${championshipId}/times`, { nome, jogadores });
+}
+
+// ---- auto-inscrição pelo capitão (aprovação do organizador) ----
+
+export function aprovarInscricao(championshipId: string, inscricaoId: string): Promise<EnrollmentCreated> {
+  return postJson<EnrollmentCreated>(
+    `/api/inscricoes/campeonatos/${championshipId}/times/${inscricaoId}/aprovar`, {});
+}
+
+export function recusarInscricao(championshipId: string, inscricaoId: string): Promise<EnrollmentCreated> {
+  return postJson<EnrollmentCreated>(
+    `/api/inscricoes/campeonatos/${championshipId}/times/${inscricaoId}/recusar`, {});
+}
+
+/** Gestor remove time (inscrições abertas) ou capitão cancela a própria pendente. */
+export function removerInscricao(championshipId: string, inscricaoId: string): Promise<void> {
+  return deleteJson(`/api/inscricoes/campeonatos/${championshipId}/times/${inscricaoId}`);
+}
+
+// ---- reuso de elenco ("Meus times") — sempre snapshot/cópia ----
+
+export interface ReusableTeam {
+  nome: string;
+  jogadores: string[];
+}
+
+export function fetchMeusTimes(): Promise<ReusableTeam[]> {
+  return getJson<ReusableTeam[]>("/api/inscricoes/meus-times");
+}
+
+export function removeAdmin(championshipId: string, adminId: string): Promise<void> {
+  return deleteJson(`/api/inscricoes/campeonatos/${championshipId}/admins/${adminId}`);
+}
+
+async function deleteJson(url: string): Promise<void> {
+  const response = await fetch(url, { method: "DELETE", headers: authHeaders() });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error ?? `${url} respondeu ${response.status}`);
+  }
+}
+
+/** Remarca data/horário de uma partida ainda não iniciada. */
+export function reagendarPartida(matchId: string, scheduledAt: string): Promise<Match> {
+  return postJson<Match>(`/api/partidas/matches/${matchId}/schedule`, { scheduled_at: scheduledAt });
 }
 
 export function startMatch(matchId: string): Promise<Match> {
   return postJson<Match>(`/api/partidas/matches/${matchId}/start`, {});
 }
 
+/** Placar parcial ao vivo — contagem do organizador durante a partida. */
+export function atualizarPlacarParcial(matchId: string, homeScore: number, awayScore: number): Promise<Match> {
+  return postJson<Match>(`/api/partidas/matches/${matchId}/score`, {
+    home_score: homeScore,
+    away_score: awayScore,
+  });
+}
+
 export async function registerResult(matchId: string, homeScore: number, awayScore: number): Promise<Match> {
   const response = await fetch(`/api/partidas/matches/${matchId}/result`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ home_score: homeScore, away_score: awayScore }),
   });
   if (!response.ok) {

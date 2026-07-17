@@ -1,16 +1,20 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
-import { useMatches } from "./data";
-import { useOrganizer } from "./organizer";
+import { logout, useAuth } from "./auth";
+import { useChampionships, useMatches } from "./data";
 import { ToastProvider } from "./ui/toast";
 
 export default function App() {
-  const organizer = useOrganizer();
+  const user = useAuth();
   const { data: matches = [] } = useMatches();
+  const { data: championships = [] } = useChampionships();
   const liveCount = matches.filter((match) => match.status === "EM_ANDAMENTO").length;
 
-  // Navegação por papel: o visitante escolhe um torneio no Início e acompanha
-  // só aquele torneio; a visão geral (Torneios, Monitoramento) é do organizador.
-  const navItems = organizer
+  // Navegação por papel: visitante escolhe um torneio no Início e acompanha
+  // só aquele torneio; quem tem conta vê a visão de gestão (Torneios) — e o
+  // Monitoramento só aparece para quem gerencia pelo menos um torneio
+  // (tela de operação/suporte; ruído para capitães).
+  const gerenciaAlgum = user !== null && championships.some((championship) => championship.can_manage);
+  const navItems = user
     ? [
         { to: "/", label: "Início", end: true },
         { to: "/torneios", label: "Torneios" },
@@ -31,9 +35,21 @@ export default function App() {
                 ● {liveCount} ao vivo
               </Link>
             )}
-            <Link to="/conta" className={`session-chip ${organizer ? "organizer" : ""}`}>
-              {organizer ? "Organizador" : "Conta"}
-            </Link>
+            {user ? (
+              <details className="session-menu">
+                <summary className="session-chip organizer">{user.nome}</summary>
+                <div className="session-menu-items">
+                  <Link to="/conta">Minha conta</Link>
+                  <button type="button" onClick={() => logout()}>
+                    Sair
+                  </button>
+                </div>
+              </details>
+            ) : (
+              <Link to="/conta" className="session-chip">
+                Entrar
+              </Link>
+            )}
           </div>
         </header>
 
@@ -45,7 +61,7 @@ export default function App() {
                   {item.label}
                 </NavLink>
               ))}
-              {organizer && (
+              {gerenciaAlgum && (
                 <>
                   <div className="nav-separator" />
                   <NavLink to="/monitoramento">Monitoramento</NavLink>

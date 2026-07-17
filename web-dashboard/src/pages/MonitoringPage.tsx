@@ -2,9 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { FeedEntry, fetchEventFeed } from "../api";
+import { useAuth } from "../auth";
 import { buildGroupLabels, useChampionships, useMatches } from "../data";
 import { formatTimestamp } from "../format";
-import { useOrganizer } from "../organizer";
 import { Skeleton } from "../ui/Skeleton";
 
 // Traducao dos eventos de dominio para leitura rapida; o nome tecnico
@@ -30,18 +30,23 @@ function prettyJson(payload: string | null): string | null {
 }
 
 export function MonitoringPage() {
-  const organizer = useOrganizer();
+  const user = useAuth();
   const [championshipFilter, setChampionshipFilter] = useState("todos");
+
+  const { data: matches = [] } = useMatches();
+  const { data: championships = [], isLoading: loadingChampionships } = useChampionships();
+
+  // tela de operação/suporte: restrita a quem gerencia pelo menos um torneio
+  // (dono ou admin delegado) — para um capitão isso é só ruído e exposição
+  const gerenciaAlgum = user !== null && championships.some((championship) => championship.can_manage);
 
   const { data: entries, isLoading } = useQuery({
     queryKey: ["event-feed"],
     queryFn: fetchEventFeed,
-    enabled: organizer,
+    enabled: gerenciaAlgum,
   });
-  const { data: matches = [] } = useMatches();
-  const { data: championships = [] } = useChampionships();
 
-  if (!organizer) {
+  if (!user || (!loadingChampionships && !gerenciaAlgum)) {
     return (
       <>
         <div className="page-header">
@@ -51,8 +56,17 @@ export function MonitoringPage() {
         <div className="panel">
           <h2>Acesso restrito</h2>
           <p className="prose">
-            Esta área é exclusiva do dono do torneio e do suporte. Entre como organizador na página{" "}
-            <Link to="/conta">Conta</Link> para acessar.
+            {user ? (
+              <>
+                Esta área é para quem gerencia torneios (dono ou administrador delegado).{" "}
+                <Link to="/torneios/novo">Crie um torneio</Link> para acessá-la.
+              </>
+            ) : (
+              <>
+                Esta área é para organizadores e suporte. Entre na sua conta na página{" "}
+                <Link to="/conta">Conta</Link> para acessar.
+              </>
+            )}
           </p>
         </div>
       </>
@@ -97,6 +111,45 @@ export function MonitoringPage() {
         <p className="subtitle">
           Rastreabilidade dos eventos da plataforma: data, identificadores, trace e payload de cada mensagem
           consumida ou publicada via Kafka.
+        </p>
+      </div>
+
+      <div className="panel">
+        <h2>Funil de torneios</h2>
+        <div className="stat-row">
+          <div className="stat-tile">
+            <span className="stat-label">Criados</span>
+            <span className="stat-value">{championships.length}</span>
+          </div>
+          <div className="stat-tile">
+            <span className="stat-label">Sorteados</span>
+            <span className="stat-value">
+              {championships.filter((championship) => championship.status === "SORTEADO").length}
+            </span>
+          </div>
+          <div className="stat-tile">
+            <span className="stat-label">Em andamento</span>
+            <span className="stat-value">
+              {championships.filter((championship) => championship.status === "EM_ANDAMENTO").length}
+            </span>
+          </div>
+          <div className="stat-tile accent">
+            <span className="stat-label">Encerrados c/ campeão</span>
+            <span className="stat-value">
+              {championships.filter((championship) => championship.status === "ENCERRADO").length}
+            </span>
+          </div>
+        </div>
+        <p className="meta">
+          Taxa de conclusão:{" "}
+          {championships.length > 0
+            ? `${Math.round(
+                (championships.filter((championship) => championship.status === "ENCERRADO").length /
+                  championships.length) *
+                  100,
+              )}% dos torneios criados chegaram ao campeão`
+            : "sem torneios ainda"}
+          . Situação atual por status — a régua de ativação e conclusão do produto.
         </p>
       </div>
 

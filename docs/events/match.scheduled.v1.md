@@ -2,7 +2,10 @@
 
 ## Contexto
 Publicado pelo `partidas-service` quando uma partida é registrada/agendada
-entre dois times de um campeonato, antes do resultado existir.
+entre dois times de um campeonato, antes do resultado existir. Também é
+**reemitido quando a partida é remarcada** (`POST /matches/{id}/schedule`),
+com novo `event_id` e o `scheduled_at` atualizado — para um mesmo
+`aggregate_id`, vale o evento mais recente.
 
 ## Produtor
 `partidas-service` — via transactional outbox, gravado na mesma transação
@@ -38,10 +41,14 @@ o repassa.
     "group_id": "uuid | null",
     "home_team": { "team_id": "uuid", "name": "string" },
     "away_team": { "team_id": "uuid", "name": "string" },
-    "scheduled_at": "2026-07-16T10:00:00Z"
+    "scheduled_at": "2026-07-16T10:00:00Z | null"
   }
 }
 ```
+
+`scheduled_at` é `null` quando o horário ainda está "a definir" (partidas
+geradas pelo sorteio nascem sem horário; o organizador define depois e o
+evento é reemitido com o valor preenchido).
 
 ## Checklist (skill `kafka-event-design`)
 - [x] Nome segue a convenção `<dominio>.<evento>.v<n>`

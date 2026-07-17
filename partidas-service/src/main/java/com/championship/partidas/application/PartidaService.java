@@ -50,6 +50,27 @@ public class PartidaService {
     }
 
     /**
+     * Remarca data/horário de uma partida AGENDADA e reemite match.scheduled.v1
+     * com o novo horário (mesmo contrato do agendamento; consumers são idempotentes).
+     */
+    @Transactional
+    public Partida reagendar(UUID partidaId, Instant novoHorario) {
+        Partida partida = partidaRepository.findById(partidaId)
+                .orElseThrow(() -> new IllegalArgumentException("partida nao encontrada: " + partidaId));
+
+        partida.reagendar(novoHorario);
+        partidaRepository.save(partida);
+
+        domainEventWriter.write(partida.getId(), MatchScheduledPayload.TYPE, new MatchScheduledPayload(
+                partida.getId(), partida.getCampeonatoId(), partida.getGroupId(),
+                new TeamRef(partida.getHomeTeamId(), partida.getHomeTeamName()),
+                new TeamRef(partida.getAwayTeamId(), partida.getAwayTeamName()),
+                partida.getScheduledAt()));
+
+        return partida;
+    }
+
+    /**
      * Inicia a partida (AGENDADA -> EM_ANDAMENTO) e grava match.started.v1
      * no outbox na mesma transação.
      */
@@ -65,6 +86,20 @@ public class PartidaService {
                 partida.getId(), partida.getCampeonatoId(), partida.getGroupId(), partida.getStartedAt()));
 
         return partida;
+    }
+
+    /**
+     * Placar parcial (contagem ao vivo): estado operacional lido via REST/polling.
+     * Sem evento de domínio — o evento continua sendo só o match.finished.v1
+     * (eventos pequenos e específicos; o produto é gestão, não transmissão).
+     */
+    @Transactional
+    public Partida atualizarPlacar(UUID partidaId, int homeScore, int awayScore) {
+        Partida partida = partidaRepository.findById(partidaId)
+                .orElseThrow(() -> new IllegalArgumentException("partida nao encontrada: " + partidaId));
+
+        partida.atualizarPlacar(homeScore, awayScore);
+        return partidaRepository.save(partida);
     }
 
     /**

@@ -55,3 +55,10 @@ server:
 championship:
   outbox:
     poll-interval-ms: 500
+
+app:
+  auth:
+    # segredo compartilhado entre os servicos para validar o token de sessao.
+    # SEM default: o servico se recusa a subir sem AUTH_SECRET definido
+    # (os scripts de dev definem um valor de desenvolvimento automaticamente)
+    secret: ${AUTH_SECRET:}

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ChampionshipFormat, Match } from "../api";
+import { BracketSlot, ChampionshipFormat, Match } from "../api";
 
 // Regras espelhadas do backend (Chaveamento.java) só para desenhar os slots
 // ainda não criados: nº de grupos por faixa e tamanho do bracket.
@@ -21,7 +21,7 @@ export function totalRoundsDoFormato(formato: ChampionshipFormat, times: number)
   return Math.log2(2 * numeroDeGrupos(Math.max(times, 6)));
 }
 
-function nomeDaRodada(round: number, totalRounds: number): string {
+export function nomeDaRodada(round: number, totalRounds: number): string {
   const distanciaDaFinal = totalRounds - round;
   if (distanciaDaFinal === 0) return "Final";
   if (distanciaDaFinal === 1) return "Semifinais";
@@ -30,18 +30,22 @@ function nomeDaRodada(round: number, totalRounds: number): string {
   return `Rodada ${round}`;
 }
 
-function BracketMatch({ match }: { match: Match }) {
+function BracketMatch({ match, myTeamId }: { match: Match; myTeamId?: string | null }) {
   const finished = match.status === "FINALIZADA";
   const homeWins = finished && (match.home_team.score ?? 0) > (match.away_team.score ?? 0);
   const awayWins = finished && (match.away_team.score ?? 0) > (match.home_team.score ?? 0);
 
   return (
     <Link to={`/partidas/${match.match_id}`} className="bracket-match">
-      <span className={`bracket-team ${homeWins ? "winner" : ""}`}>
+      <span
+        className={`bracket-team ${homeWins ? "winner" : ""} ${myTeamId === match.home_team.team_id ? "my-team" : ""}`}
+      >
         {match.home_team.name}
         <span className="bracket-score">{match.home_team.score ?? "–"}</span>
       </span>
-      <span className={`bracket-team ${awayWins ? "winner" : ""}`}>
+      <span
+        className={`bracket-team ${awayWins ? "winner" : ""} ${myTeamId === match.away_team.team_id ? "my-team" : ""}`}
+      >
         {match.away_team.name}
         <span className="bracket-score">{match.away_team.score ?? "–"}</span>
       </span>
@@ -59,10 +63,14 @@ export function Bracket({
   matches,
   formato,
   teamCount,
+  slots = [],
+  myTeamId,
 }: {
   matches: Match[];
   formato: ChampionshipFormat;
   teamCount: number;
+  slots?: BracketSlot[];
+  myTeamId?: string | null;
 }) {
   const playoffMatches = matches.filter((match) => match.stage === "PLAYOFF");
   const totalRounds = totalRoundsDoFormato(formato, teamCount);
@@ -74,6 +82,12 @@ export function Bracket({
     }
   }
 
+  // times que já ocupam um slot (byes e vencedores aguardando adversário)
+  const slotTeams = new Map<string, string>();
+  for (const slot of slots) {
+    slotTeams.set(`${slot.round}-${slot.slot}`, slot.team_name);
+  }
+
   const finalMatch = byRoundAndPos.get(`${totalRounds}-0`);
   const champion =
     finalMatch && finalMatch.status === "FINALIZADA"
@@ -82,9 +96,14 @@ export function Bracket({
         : finalMatch.away_team.name
       : null;
 
-  const placeholderDaRodada = (round: number): string => {
+  // placeholder informativo: quem já está no confronto (aguardando adversário),
+  // quem avançou direto por bye, ou de onde a vaga virá
+  const placeholderDoConfronto = (round: number, pos: number): string => {
+    const jaNoConfronto = slotTeams.get(`${round}-${2 * pos}`) ?? slotTeams.get(`${round}-${2 * pos + 1}`);
+    if (jaNoConfronto) return `${jaNoConfronto} — aguarda adversário`;
+    const bye = slotTeams.get(`${round + 1}-${pos}`);
+    if (bye && round === 1) return `${bye} — bye, avança direto`;
     if (formato === "GRUPOS_PLAYOFFS" && round === 1) return "definido pela fase de grupos";
-    if (formato === "PLAYOFFS" && round === 1) return "bye — avança direto";
     return "aguardando definição";
   };
 
@@ -101,10 +120,10 @@ export function Bracket({
               {Array.from({ length: expected }, (_, pos) => {
                 const match = byRoundAndPos.get(`${round}-${pos}`);
                 return match ? (
-                  <BracketMatch key={pos} match={match} />
+                  <BracketMatch key={pos} match={match} myTeamId={myTeamId} />
                 ) : (
                   <div key={pos} className="bracket-match placeholder">
-                    <span className="meta">{placeholderDaRodada(round)}</span>
+                    <span className="meta">{placeholderDoConfronto(round, pos)}</span>
                   </div>
                 );
               })}

@@ -34,33 +34,68 @@ public class Campeonato {
     @Column(name = "campeao_nome", length = 100)
     private String campeaoNome;
 
+    /** Dono do torneio; null em campeonatos legados (criados antes das contas). */
+    @Column(name = "dono_id")
+    private UUID donoId;
+
+    /** true = inscrição de capitão fica PENDENTE até o organizador aprovar. */
+    @Column(name = "aprovacao_inscricoes", nullable = false)
+    private boolean aprovacaoInscricoes = true;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     protected Campeonato() {
     }
 
-    private Campeonato(UUID id, String nome, CampeonatoFormato formato, CampeonatoStatus status, Instant createdAt) {
+    private Campeonato(UUID id, String nome, CampeonatoFormato formato, CampeonatoStatus status,
+                        UUID donoId, boolean aprovacaoInscricoes, Instant createdAt) {
         this.id = id;
         this.nome = nome;
         this.formato = formato;
         this.status = status;
+        this.donoId = donoId;
+        this.aprovacaoInscricoes = aprovacaoInscricoes;
         this.createdAt = createdAt;
     }
 
-    public static Campeonato criar(String nome, CampeonatoFormato formato) {
+    public static Campeonato criar(String nome, CampeonatoFormato formato, UUID donoId,
+                                    boolean aprovacaoInscricoes) {
         if (nome == null || nome.isBlank() || nome.length() > 100) {
             throw new IllegalArgumentException("nome do campeonato deve ter entre 1 e 100 caracteres");
         }
         if (formato == null) {
             throw new IllegalArgumentException("formato do campeonato e obrigatorio");
         }
-        return new Campeonato(UUID.randomUUID(), nome, formato, CampeonatoStatus.ABERTO, Instant.now());
+        return new Campeonato(UUID.randomUUID(), nome, formato, CampeonatoStatus.ABERTO, donoId,
+                aprovacaoInscricoes, Instant.now());
+    }
+
+    public static Campeonato criar(String nome, CampeonatoFormato formato, UUID donoId) {
+        return criar(nome, formato, donoId, true);
+    }
+
+    public static Campeonato criar(String nome, CampeonatoFormato formato) {
+        return criar(nome, formato, null);
     }
 
     /** Compatibilidade com o fluxo antigo: sem formato explícito, pontos corridos. */
     public static Campeonato criar(String nome) {
-        return criar(nome, CampeonatoFormato.PONTOS_CORRIDOS);
+        return criar(nome, CampeonatoFormato.PONTOS_CORRIDOS, null);
+    }
+
+    /** Dono ou campeonato legado (sem dono) — admins são verificados no serviço. */
+    public boolean ehDono(UUID usuarioId) {
+        return donoId == null || donoId.equals(usuarioId);
+    }
+
+    public boolean semDono() {
+        return donoId == null;
+    }
+
+    /** Inscrição de capitão precisa da aprovação do organizador? (escolha da criação) */
+    public boolean exigeAprovacaoDeInscricoes() {
+        return aprovacaoInscricoes;
     }
 
     public boolean aceitaInscricoes() {
@@ -123,6 +158,10 @@ public class Campeonato {
 
     public String getCampeaoNome() {
         return campeaoNome;
+    }
+
+    public UUID getDonoId() {
+        return donoId;
     }
 
     public Instant getCreatedAt() {

@@ -73,6 +73,8 @@ class ChaveamentoServiceTest {
         });
         lenient().when(chaveSlotRepository.findById(any()))
                 .thenAnswer(invocation -> Optional.ofNullable(slots.get(invocation.getArgument(0))));
+        lenient().when(chaveSlotRepository.findByIdCampeonatoId(any()))
+                .thenAnswer(invocation -> List.copyOf(slots.values()));
         lenient().when(partidaRepository.findByCampeonatoId(any())).thenReturn(List.of());
     }
 
@@ -114,6 +116,12 @@ class ChaveamentoServiceTest {
         assertThat(rodada1).hasSize(1);
         assertThat(rodada2).hasSize(1);
         assertThat(criadas).allMatch(partida -> partida.getStage() == PartidaStage.PLAYOFF);
+        // partidas geradas nascem sem horario ("a definir")
+        assertThat(criadas).allMatch(partida -> partida.getScheduledAt() == null);
+        // os 3 byes ficam visiveis como slots da 2ª rodada (bye nominal no bracket)
+        assertThat(service.listarSlots(criadas.get(0).getCampeonatoId()).stream()
+                .filter(slot -> slot.getId().getRound() == 2))
+                .hasSize(3);
     }
 
     @Test

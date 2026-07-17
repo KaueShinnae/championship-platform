@@ -1,9 +1,9 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth";
 import { TournamentGrid } from "../components/TournamentGrid";
-import { useOrganizer } from "../organizer";
 
 export function TournamentsPage() {
-  const organizer = useOrganizer();
+  const organizer = useAuth() !== null;
 
   return (
     <>

@@ -32,6 +32,7 @@ public class TimeDtos {
             String timeNome,
             List<JogadorView> jogadores,
             InscricaoStatus status,
+            UUID capitaoUsuarioId,
             Instant confirmedAt
     ) {
         public static InscricaoDetalheResponse from(Inscricao inscricao) {
@@ -43,6 +44,7 @@ public class TimeDtos {
                             .map(jogador -> new JogadorView(jogador.getId(), jogador.getNome()))
                             .toList(),
                     inscricao.getStatus(),
+                    inscricao.getCapitaoUsuarioId(),
                     inscricao.getConfirmedAt());
         }
     }
@@ -53,6 +55,7 @@ public class TimeDtos {
             String timeNome,
             UUID campeonatoId,
             InscricaoStatus status,
+            UUID capitaoUsuarioId,
             Instant createdAt
     ) {
         public static InscricaoResponse from(Inscricao inscricao) {
@@ -62,6 +65,7 @@ public class TimeDtos {
                     inscricao.getTime().getNome(),
                     inscricao.getCampeonato().getId(),
                     inscricao.getStatus(),
+                    inscricao.getCapitaoUsuarioId(),
                     inscricao.getCreatedAt());
         }
     }

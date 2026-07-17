@@ -1,5 +1,6 @@
 package com.championship.inscricoes.config;
 
+import com.championship.inscricoes.infrastructure.messaging.events.ChampionshipPermissionsChangedPayload;
 import com.championship.inscricoes.infrastructure.messaging.events.EnrollmentConfirmedPayload;
 import com.championship.inscricoes.infrastructure.messaging.events.TeamRegisteredPayload;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -18,5 +19,10 @@ public class KafkaTopicConfig {
     @Bean
     public NewTopic enrollmentConfirmedTopic() {
         return TopicBuilder.name(EnrollmentConfirmedPayload.TYPE).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic championshipPermissionsChangedTopic() {
+        return TopicBuilder.name(ChampionshipPermissionsChangedPayload.TYPE).partitions(3).replicas(1).build();
     }
 }

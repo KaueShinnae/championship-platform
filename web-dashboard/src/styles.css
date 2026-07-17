@@ -1033,6 +1033,28 @@ td.points {
   text-decoration: none;
 }
 
+/* grupos sorteados */
+
+.groups-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.group-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.group-card h3 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+
 /* bracket */
 
 .bracket-scroll {
@@ -1192,6 +1214,109 @@ details.payload pre {
   overflow-x: auto;
 }
 
+/* ---------- meu time, contagem ao vivo e compartilhar ---------- */
+
+.star-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ffd75e;
+  font-size: 1rem;
+  padding: 0 6px 0 0;
+  line-height: 1;
+}
+
+.my-team,
+.my-team-row td.left {
+  color: #ffd75e;
+  font-weight: 600;
+}
+
+.my-team-row {
+  background: rgba(255, 215, 94, 0.06);
+}
+
+.match-card.my-team-match {
+  border-left: 3px solid #ffd75e;
+}
+
+.my-team-panel h2 {
+  color: #ffd75e;
+}
+
+.live-counter {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.counter-side {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.share-button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.badge.manage-badge {
+  background: #2a2440;
+  color: #b9a7ff;
+}
+
+/* ---------- mobile minimo ---------- */
+
+@media (max-width: 640px) {
+  .tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tabs .tab {
+    white-space: nowrap;
+  }
+
+  .stepper {
+    gap: 4px;
+  }
+
+  .stepper li {
+    padding: 3px 8px;
+    font-size: 0.72rem;
+  }
+
+  /* tabela de classificacao compacta: so posicao, time, pontos e saldo */
+  .hide-narrow {
+    display: none;
+  }
+
+  /* alvos de toque maiores nas acoes de partida */
+  .match-actions button,
+  .match-actions input {
+    min-height: 42px;
+  }
+
+  .page-title-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .share-button {
+    margin-left: 0;
+  }
+
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- skeleton ---------- */
 
 .skeleton-group {
@@ -1334,4 +1459,108 @@ details.payload pre {
   .two-col {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---- rodada 4: auth, capitão, reuso e reivindicação ---- */
+
+.auth-card {
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.auth-tabs {
+  margin-bottom: 16px;
+}
+
+.auth-form .row {
+  margin-bottom: 10px;
+}
+
+.auth-form input {
+  flex: 1;
+}
+
+.auth-cta {
+  width: 100%;
+}
+
+.password-row {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.password-toggle {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+}
+
+.session-menu {
+  position: relative;
+}
+
+.session-menu summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.session-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.session-menu[open] .session-menu-items {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  padding: 6px;
+  z-index: 30;
+}
+
+.session-menu-items a,
+.session-menu-items button {
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.session-menu-items a:hover,
+.session-menu-items button:hover {
+  background: var(--panel-hover, rgb(255 255 255 / 0.06));
+}
+
+.approvals-panel {
+  border-left: 3px solid #eab308;
+}
+
+.badge.recusada {
+  background: rgb(239 68 68 / 0.15);
+  color: #f87171;
+}
+
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.suggestion-chips .chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
 }

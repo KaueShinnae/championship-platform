@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { fetchStandings } from "../api";
 import { MatchList } from "../components/MatchCard";
 import { TournamentGrid } from "../components/TournamentGrid";
+import { useAuth } from "../auth";
 import { buildGroupLabels, sortMatches, useAllEnrollments, useChampionships, useMatches } from "../data";
-import { useOrganizer } from "../organizer";
 import { Skeleton } from "../ui/Skeleton";
 
 function StatTile({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
@@ -62,14 +62,14 @@ function GroupLeaders() {
 }
 
 export function HomePage() {
-  const organizer = useOrganizer();
+  const user = useAuth();
   const { data: matches = [], isLoading: loadingMatches, isError } = useMatches();
   const { data: championships = [] } = useChampionships();
   const { byChampionship } = useAllEnrollments();
 
   // Visitante não vê a visão geral agregada (isso é gestão): ele escolhe um
   // torneio e acompanha tudo dentro da página daquele torneio.
-  if (!organizer) {
+  if (!user) {
     return (
       <>
         <div className="page-header">

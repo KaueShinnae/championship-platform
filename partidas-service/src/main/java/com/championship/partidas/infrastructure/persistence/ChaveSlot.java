@@ -40,6 +40,14 @@ public class ChaveSlot {
             this.slot = slot;
         }
 
+        public int getRound() {
+            return round;
+        }
+
+        public int getSlot() {
+            return slot;
+        }
+
         @Override
         public boolean equals(Object other) {
             if (this == other) return true;

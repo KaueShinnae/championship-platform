@@ -26,6 +26,10 @@ public class Inscricao {
     @Column(name = "group_id")
     private UUID groupId;
 
+    /** Usuário que auto-inscreveu o time; nulo quando o organizador inscreveu direto. */
+    @Column(name = "capitao_usuario_id")
+    private UUID capitaoUsuarioId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -35,16 +39,24 @@ public class Inscricao {
     protected Inscricao() {
     }
 
-    private Inscricao(UUID id, Time time, Campeonato campeonato, InscricaoStatus status, Instant createdAt) {
+    private Inscricao(UUID id, Time time, Campeonato campeonato, InscricaoStatus status,
+                       UUID capitaoUsuarioId, Instant createdAt) {
         this.id = id;
         this.time = time;
         this.campeonato = campeonato;
         this.status = status;
+        this.capitaoUsuarioId = capitaoUsuarioId;
         this.createdAt = createdAt;
     }
 
     public static Inscricao pendente(Time time, Campeonato campeonato) {
-        return new Inscricao(UUID.randomUUID(), time, campeonato, InscricaoStatus.PENDENTE, Instant.now());
+        return new Inscricao(UUID.randomUUID(), time, campeonato, InscricaoStatus.PENDENTE, null, Instant.now());
+    }
+
+    /** Auto-inscrição pelo capitão: fica PENDENTE até o organizador aprovar. */
+    public static Inscricao pendenteDeCapitao(Time time, Campeonato campeonato, UUID capitaoUsuarioId) {
+        return new Inscricao(UUID.randomUUID(), time, campeonato, InscricaoStatus.PENDENTE,
+                capitaoUsuarioId, Instant.now());
     }
 
     public void confirmar() {
@@ -53,6 +65,14 @@ public class Inscricao {
         }
         this.status = InscricaoStatus.CONFIRMADA;
         this.confirmedAt = Instant.now();
+    }
+
+    /** PENDENTE -> RECUSADA: o capitão pode tentar de novo com outra inscrição. */
+    public void recusar() {
+        if (this.status != InscricaoStatus.PENDENTE) {
+            throw new IllegalStateException("so uma inscricao PENDENTE pode ser recusada: " + this.status);
+        }
+        this.status = InscricaoStatus.RECUSADA;
     }
 
     public UUID getId() {
@@ -73,6 +93,10 @@ public class Inscricao {
 
     public UUID getGroupId() {
         return groupId;
+    }
+
+    public UUID getCapitaoUsuarioId() {
+        return capitaoUsuarioId;
     }
 
     public Instant getCreatedAt() {

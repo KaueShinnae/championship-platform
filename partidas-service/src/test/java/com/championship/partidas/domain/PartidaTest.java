@@ -31,15 +31,44 @@ class PartidaTest {
     }
 
     @Test
-    void agendaSemHorarioUsaAgora() {
+    void agendaSemHorarioFicaADefinir() {
+        // nunca inventar data: sem horario escolhido, scheduled_at fica null
         Partida partida = Partida.agendar(campeonatoId, null, homeTeamId, "Timaço FC", awayTeamId, "Rival FC", null);
 
-        assertThat(partida.getScheduledAt()).isNotNull();
+        assertThat(partida.getScheduledAt()).isNull();
+        assertThat(partida.getStatus()).isEqualTo(PartidaStatus.AGENDADA);
     }
 
     @Test
     void rejeitaTimeJogandoContraSiMesmo() {
         assertThatThrownBy(() -> Partida.agendar(campeonatoId, null, homeTeamId, "Timaço FC", homeTeamId, "Timaço FC", null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void reagendaPartidaAgendada() {
+        Partida partida = agendada();
+
+        partida.reagendar(Instant.parse("2026-07-22T20:00:00Z"));
+
+        assertThat(partida.getScheduledAt()).isEqualTo(Instant.parse("2026-07-22T20:00:00Z"));
+        assertThat(partida.getStatus()).isEqualTo(PartidaStatus.AGENDADA);
+    }
+
+    @Test
+    void rejeitaReagendarPartidaJaIniciada() {
+        Partida partida = agendada();
+        partida.iniciar();
+
+        assertThatThrownBy(() -> partida.reagendar(Instant.parse("2026-07-22T20:00:00Z")))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void rejeitaReagendarSemHorario() {
+        Partida partida = agendada();
+
+        assertThatThrownBy(() -> partida.reagendar(null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -59,6 +88,39 @@ class PartidaTest {
         partida.iniciar();
 
         assertThatThrownBy(partida::iniciar).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void atualizaPlacarParcialComPartidaEmAndamento() {
+        Partida partida = agendada();
+        partida.iniciar();
+
+        partida.atualizarPlacar(2, 2);
+
+        assertThat(partida.getHomeScore()).isEqualTo(2);
+        assertThat(partida.getAwayScore()).isEqualTo(2);
+        assertThat(partida.getStatus()).isEqualTo(PartidaStatus.EM_ANDAMENTO);
+    }
+
+    @Test
+    void placarParcialAceitaEmpateAteMesmoEmPlayoff() {
+        // a exigencia de vencedor no mata-mata vale so no encerramento
+        Partida playoff = Partida.dePlayoff(campeonatoId, 1, 0, homeTeamId, "Timaço FC", awayTeamId, "Rival FC");
+        playoff.iniciar();
+
+        playoff.atualizarPlacar(1, 1);
+
+        assertThat(playoff.getStatus()).isEqualTo(PartidaStatus.EM_ANDAMENTO);
+    }
+
+    @Test
+    void rejeitaPlacarParcialForaDeJogoOuNegativo() {
+        Partida agendada = agendada();
+        assertThatThrownBy(() -> agendada.atualizarPlacar(1, 0)).isInstanceOf(IllegalStateException.class);
+
+        Partida emJogo = agendada();
+        emJogo.iniciar();
+        assertThatThrownBy(() -> emJogo.atualizarPlacar(-1, 0)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

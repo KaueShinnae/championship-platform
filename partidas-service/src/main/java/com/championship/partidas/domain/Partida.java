@@ -40,7 +40,8 @@ public class Partida {
     @Column(nullable = false, length = 20)
     private PartidaStatus status;
 
-    @Column(name = "scheduled_at", nullable = false)
+    /** Horário marcado; null = "a definir" (organizador define depois). */
+    @Column(name = "scheduled_at")
     private Instant scheduledAt;
 
     @Column(name = "started_at")
@@ -90,9 +91,10 @@ public class Partida {
                                    UUID awayTeamId, String awayTeamName,
                                    Instant scheduledAt) {
         validarTimes(homeTeamId, homeTeamName, awayTeamId, awayTeamName);
+        // scheduledAt null = horario "a definir" (nunca inventar data)
         return new Partida(UUID.randomUUID(), campeonatoId, groupId,
                 homeTeamId, homeTeamName, awayTeamId, awayTeamName,
-                scheduledAt != null ? scheduledAt : Instant.now(),
+                scheduledAt,
                 groupId != null ? PartidaStage.GRUPOS : null, null, null);
     }
 
@@ -103,7 +105,7 @@ public class Partida {
         validarTimes(homeTeamId, homeTeamName, awayTeamId, awayTeamName);
         return new Partida(UUID.randomUUID(), campeonatoId, null,
                 homeTeamId, homeTeamName, awayTeamId, awayTeamName,
-                Instant.now(), PartidaStage.PLAYOFF, round, bracketPos);
+                null, PartidaStage.PLAYOFF, round, bracketPos);
     }
 
     private static void validarTimes(UUID homeTeamId, String homeTeamName,
@@ -119,12 +121,40 @@ public class Partida {
         }
     }
 
+    /** Remarca data/horário — só enquanto a partida não foi iniciada. */
+    public void reagendar(Instant novoHorario) {
+        if (this.status != PartidaStatus.AGENDADA) {
+            throw new IllegalStateException("so partida agendada pode ser remarcada: " + id + " esta " + status);
+        }
+        if (novoHorario == null) {
+            throw new IllegalArgumentException("novo horario e obrigatorio");
+        }
+        this.scheduledAt = novoHorario;
+    }
+
     public void iniciar() {
         if (this.status != PartidaStatus.AGENDADA) {
             throw new IllegalStateException("so partida agendada pode ser iniciada: " + id + " esta " + status);
         }
         this.status = PartidaStatus.EM_ANDAMENTO;
         this.startedAt = Instant.now();
+    }
+
+    /**
+     * Placar parcial durante a partida — ferramenta de contagem do organizador
+     * (pontos genéricos, vale para qualquer esporte). Empate é permitido aqui;
+     * a exigência de vencedor no mata-mata vale só no encerramento.
+     */
+    public void atualizarPlacar(int homeScore, int awayScore) {
+        if (this.status != PartidaStatus.EM_ANDAMENTO) {
+            throw new IllegalStateException(
+                    "placar parcial so pode ser atualizado com a partida em andamento: " + id + " esta " + status);
+        }
+        if (homeScore < 0 || awayScore < 0) {
+            throw new IllegalArgumentException("placar nao pode ser negativo");
+        }
+        this.homeScore = homeScore;
+        this.awayScore = awayScore;
     }
 
     public void registrarResultado(int homeScore, int awayScore) {

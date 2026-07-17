@@ -135,6 +135,15 @@ public class ChaveamentoService {
     }
 
     /**
+     * Slots ocupados do bracket (times que já entraram numa rodada, incluindo
+     * byes) — usado pelo dashboard para mostrar quem avançou direto.
+     */
+    @Transactional(readOnly = true)
+    public List<ChaveSlot> listarSlots(UUID campeonatoId) {
+        return chaveSlotRepository.findByIdCampeonatoId(campeonatoId);
+    }
+
+    /**
      * Descarta o sorteio (re-sortear / reabrir inscrições). Bloqueado se
      * alguma partida do campeonato já saiu de AGENDADA.
      */

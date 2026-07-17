@@ -43,6 +43,9 @@ function Test-PortUp($port) {
 }
 
 Write-Host "==> Iniciando servicos Spring..." -ForegroundColor Cyan
+# AUTH_SECRET nao tem default no application.yml (o servico se recusa a subir
+# sem ele); em dev o script define um valor conhecido se nao vier do ambiente
+if (-not $env:AUTH_SECRET) { $env:AUTH_SECRET = "championship-dev-secret-trocar-em-producao" }
 $svcPorts = @{ "inscricoes-service" = 8081; "partidas-service" = 8082; "ranking-service" = 8083 }
 foreach ($svc in @("inscricoes-service", "partidas-service", "ranking-service")) {
     if (Test-PortUp $svcPorts[$svc]) {

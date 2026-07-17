@@ -101,7 +101,8 @@ export function MatchDetailPage() {
         </div>
         <ul className="timeline">
           <li>
-            <strong>Agendada para</strong> {formatDateTime(match.scheduled_at)}
+            <strong>Agendada para</strong>{" "}
+            {match.scheduled_at ? formatDateTime(match.scheduled_at) : "horário a definir"}
           </li>
           {match.started_at && (
             <li>

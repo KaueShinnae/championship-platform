@@ -1,5 +1,7 @@
 package com.championship.inscricoes.api;
 
+import com.championship.inscricoes.application.NaoAutenticadoException;
+import com.championship.inscricoes.application.SemPermissaoException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -11,6 +13,16 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(NaoAutenticadoException.class)
+    public ResponseEntity<Map<String, String>> handleNaoAutenticado(NaoAutenticadoException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(SemPermissaoException.class)
+    public ResponseEntity<Map<String, String>> handleSemPermissao(SemPermissaoException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", ex.getMessage()));
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {

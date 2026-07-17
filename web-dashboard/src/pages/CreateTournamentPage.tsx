@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChampionshipFormat, createChampionship } from "../api";
-import { useOrganizer } from "../organizer";
+import { useAuth } from "../auth";
 import { useToast } from "../ui/toast";
 
 const FORMATS: {
@@ -40,16 +40,17 @@ const FORMATS: {
 ];
 
 export function CreateTournamentPage() {
-  const organizer = useOrganizer();
+  const user = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
 
   const [nome, setNome] = useState("");
   const [formato, setFormato] = useState<ChampionshipFormat | null>(null);
+  const [aprovacao, setAprovacao] = useState(true);
 
   const mutation = useMutation({
-    mutationFn: () => createChampionship(nome.trim(), formato!),
+    mutationFn: () => createChampionship(nome.trim(), formato!, aprovacao),
     onSuccess: (championship) => {
       queryClient.invalidateQueries({ queryKey: ["championships"] });
       toast("success", `Torneio "${championship.nome}" criado — agora inscreva os times`);
@@ -58,7 +59,7 @@ export function CreateTournamentPage() {
     onError: (error) => toast("error", (error as Error).message),
   });
 
-  if (!organizer) {
+  if (!user) {
     return (
       <>
         <div className="page-header">
@@ -66,7 +67,8 @@ export function CreateTournamentPage() {
         </div>
         <div className="panel">
           <p className="prose">
-            Criar torneios é uma ação de organizador. Entre com sua chave na página <Link to="/conta">Conta</Link>.
+            Para criar um torneio, entre ou crie sua conta na página <Link to="/conta">Conta</Link> — o torneio
+            fica registrado no seu nome.
           </p>
         </div>
       </>
@@ -126,6 +128,33 @@ export function CreateTournamentPage() {
         </div>
 
         {selected && <p className="hint">{selected.rules}</p>}
+
+        <label className="field-label">Inscrições de capitães</label>
+        <div className="format-grid approval-grid">
+          <button
+            type="button"
+            className={`format-card ${aprovacao ? "selected" : ""}`}
+            onClick={() => setAprovacao(true)}
+            aria-pressed={aprovacao}
+          >
+            <span className="format-icon">✅</span>
+            <strong>Com minha aprovação</strong>
+            <span className="format-desc">Capitães se inscrevem e aguardam você aprovar cada time.</span>
+          </button>
+          <button
+            type="button"
+            className={`format-card ${!aprovacao ? "selected" : ""}`}
+            onClick={() => setAprovacao(false)}
+            aria-pressed={!aprovacao}
+          >
+            <span className="format-icon">⚡</span>
+            <strong>Entrada direta</strong>
+            <span className="format-desc">
+              Times de capitães entram confirmados na hora — você pode remover indesejados enquanto as
+              inscrições estiverem abertas.
+            </span>
+          </button>
+        </div>
 
         <div className="match-actions">
           <Link to="/torneios" className="button-ghost">

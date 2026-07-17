@@ -33,9 +33,14 @@ export function TournamentGrid({ emptyMessage }: { emptyMessage: ReactNode }) {
     );
   }
 
+  // torneios que o usuário gerencia vêm primeiro
+  const ordered = [...byChampionship].sort(
+    (a, b) => Number(b.championship.can_manage) - Number(a.championship.can_manage),
+  );
+
   return (
     <ul className="card-grid">
-      {byChampionship.map(({ championship, enrollments }) => {
+      {ordered.map(({ championship, enrollments }) => {
         const confirmed = enrollments.filter((enrollment) => enrollment.status === "CONFIRMADA").length;
         const championshipMatches = matches.filter((match) => match.championship_id === championship.id);
         const liveCount = championshipMatches.filter((match) => match.status === "EM_ANDAMENTO").length;
@@ -47,6 +52,7 @@ export function TournamentGrid({ emptyMessage }: { emptyMessage: ReactNode }) {
                 <span className={`badge championship-${championship.status.toLowerCase()}`}>
                   {CHAMPIONSHIP_STATUS_LABEL[championship.status]}
                 </span>
+                {championship.can_manage && <span className="badge manage-badge">sua gestão</span>}
               </div>
               <p className="meta">
                 {confirmed} de {enrollments.length} time{enrollments.length === 1 ? "" : "s"} confirmado

@@ -65,6 +65,25 @@ class CampeonatoTest {
     }
 
     @Test
+    void quemCriaEODonoEAprovacaoEPadrao() {
+        java.util.UUID dono = java.util.UUID.randomUUID();
+        Campeonato campeonato = Campeonato.criar("Copa Verão 2026", CampeonatoFormato.PLAYOFFS, dono);
+
+        assertThat(campeonato.semDono()).isFalse();
+        assertThat(campeonato.ehDono(dono)).isTrue();
+        assertThat(campeonato.ehDono(java.util.UUID.randomUUID())).isFalse();
+        assertThat(campeonato.exigeAprovacaoDeInscricoes()).isTrue();
+    }
+
+    @Test
+    void criaComInscricaoDiretaQuandoOrganizadorEscolhe() {
+        Campeonato campeonato = Campeonato.criar("Copa Aberta", CampeonatoFormato.PONTOS_CORRIDOS,
+                java.util.UUID.randomUUID(), false);
+
+        assertThat(campeonato.exigeAprovacaoDeInscricoes()).isFalse();
+    }
+
+    @Test
     void bloqueiaTransicoesForaDeOrdem() {
         Campeonato campeonato = Campeonato.criar("Copa Verão 2026", CampeonatoFormato.PLAYOFFS);
 

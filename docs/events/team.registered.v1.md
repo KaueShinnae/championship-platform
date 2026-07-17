@@ -6,8 +6,14 @@ Publicado pelo `inscricoes-service` quando um time é cadastrado com sucesso
 saga coreografada de inscrição.
 
 ## Produtor
-`inscricoes-service` — via transactional outbox (`infrastructure/messaging`),
-gravado na mesma transação da criação do `Time`.
+`inscricoes-service` — via transactional outbox (`infrastructure/messaging`).
+
+**Momento da emissão** (desde a auto-inscrição pelo capitão):
+- Inscrição feita por dono/admin do torneio: na mesma transação da criação
+  do `Time` (comportamento original — auto-confirma via saga).
+- Auto-inscrição de capitão: a inscrição fica `PENDENTE` **sem** evento; o
+  evento só é gravado quando o organizador **aprova** — a aprovação dispara a
+  mesma saga de confirmação. Recusa/cancelamento nunca emitem este evento.
 
 ## Consumidores
 - `inscricoes-service` (o próprio serviço, listener que decide confirmar a

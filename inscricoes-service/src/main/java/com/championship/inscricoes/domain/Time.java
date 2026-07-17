@@ -19,26 +19,35 @@ public class Time {
     @OneToMany(mappedBy = "time", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Jogador> jogadores = new ArrayList<>();
 
+    /** Quem cadastrou o time — base das sugestões de reuso (nulo em times legados). */
+    @Column(name = "criado_por")
+    private UUID criadoPor;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     protected Time() {
     }
 
-    private Time(UUID id, String nome, Instant createdAt) {
+    private Time(UUID id, String nome, UUID criadoPor, Instant createdAt) {
         this.id = id;
         this.nome = nome;
+        this.criadoPor = criadoPor;
         this.createdAt = createdAt;
     }
 
     public static Time criar(String nome, List<String> nomesJogadores) {
+        return criar(nome, nomesJogadores, null);
+    }
+
+    public static Time criar(String nome, List<String> nomesJogadores, UUID criadoPor) {
         if (nome == null || nome.isBlank() || nome.length() > 100) {
             throw new IllegalArgumentException("nome do time deve ter entre 1 e 100 caracteres");
         }
         if (nomesJogadores == null || nomesJogadores.isEmpty()) {
             throw new IllegalArgumentException("time precisa de pelo menos 1 jogador");
         }
-        Time time = new Time(UUID.randomUUID(), nome, Instant.now());
+        Time time = new Time(UUID.randomUUID(), nome, criadoPor, Instant.now());
         nomesJogadores.forEach(nomeJogador -> time.jogadores.add(new Jogador(time, nomeJogador)));
         return time;
     }

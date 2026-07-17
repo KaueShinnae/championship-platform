@@ -34,6 +34,11 @@ public class MatchDtos {
     ) {
     }
 
+    public record ReagendarPartidaRequest(
+            @NotNull Instant scheduledAt
+    ) {
+    }
+
     public record TimeSorteio(
             @NotNull UUID teamId,
             @NotBlank @Size(max = 100) String name
@@ -48,6 +53,10 @@ public class MatchDtos {
     }
 
     public record TeamView(UUID teamId, String name, Integer score) {
+    }
+
+    /** Slot ocupado do bracket (inclui byes: time que entrou numa rodada sem partida ainda). */
+    public record ChaveSlotResponse(int round, int slot, UUID teamId, String teamName) {
     }
 
     public record PartidaResponse(

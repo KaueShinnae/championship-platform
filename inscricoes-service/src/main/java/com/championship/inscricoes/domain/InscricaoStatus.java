@@ -2,5 +2,6 @@ package com.championship.inscricoes.domain;
 
 public enum InscricaoStatus {
     PENDENTE,
-    CONFIRMADA
+    CONFIRMADA,
+    RECUSADA
 }

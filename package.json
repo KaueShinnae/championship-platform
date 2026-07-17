@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1 -SkipBuild",
     "dev:build": "powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1",
-    "down": "powershell -ExecutionPolicy Bypass -File scripts/dev-down.ps1"
+    "down": "powershell -ExecutionPolicy Bypass -File scripts/dev-down.ps1",
+    "e2e": "node scripts/e2e-happy-path.mjs"
   }
 }

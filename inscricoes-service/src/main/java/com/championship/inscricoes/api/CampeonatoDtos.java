@@ -14,8 +14,12 @@ public class CampeonatoDtos {
 
     public record CriarCampeonatoRequest(
             @NotBlank @Size(max = 100) String nome,
-            @NotNull CampeonatoFormato formato
+            @NotNull CampeonatoFormato formato,
+            Boolean aprovacaoInscricoes // null = true (padrão: capitães aguardam aprovação)
     ) {
+    }
+
+    public record AdicionarAdminRequest(@NotBlank @Size(max = 150) String email) {
     }
 
     public record CampeonatoResponse(
@@ -24,11 +28,16 @@ public class CampeonatoDtos {
             CampeonatoStatus status,
             CampeonatoFormato formato,
             String campeaoNome,
+            boolean canManage,
+            boolean isDono,
+            boolean semDono,
+            boolean aprovacaoInscricoes,
             Instant createdAt
     ) {
-        public static CampeonatoResponse from(Campeonato campeonato) {
+        public static CampeonatoResponse from(Campeonato campeonato, boolean canManage, boolean isDono) {
             return new CampeonatoResponse(campeonato.getId(), campeonato.getNome(), campeonato.getStatus(),
-                    campeonato.getFormato(), campeonato.getCampeaoNome(), campeonato.getCreatedAt());
+                    campeonato.getFormato(), campeonato.getCampeaoNome(), canManage, isDono,
+                    campeonato.semDono(), campeonato.exigeAprovacaoDeInscricoes(), campeonato.getCreatedAt());
         }
     }
 
