@@ -58,7 +58,6 @@ export function logout(): void {
   notify();
 }
 
-/** Usuário logado (ou null). */
 export function useAuth(): SessionUser | null {
   const session = useSyncExternalStore((listener) => {
     listeners.add(listener);

@@ -10,11 +10,6 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Consumer de match.finished.v1 (SPEC.md §3): recalcula a classificação do
- * grupo no read model. Idempotente via processed_events — reentrega da mesma
- * mensagem não conta o resultado duas vezes (skill kafka-event-design).
- */
 @Component
 public class MatchFinishedListener {
 

@@ -1,7 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { atualizarPlacarParcial, Match, reagendarPartida, registerResult, startMatch } from "../api";
+import {
+  atualizarPlacarParcial,
+  corrigirResultado,
+  Match,
+  reagendarPartida,
+  registerResult,
+  startMatch,
+} from "../api";
 import { useCanManage } from "../data";
 import { formatShortDateTime } from "../format";
 import { useMyTeam } from "../ui/myteam";
@@ -21,10 +28,6 @@ function useRefreshMatch(match: Match) {
   };
 }
 
-/**
- * Formulário de placar manual. Em partida eliminatória, empate é bloqueado
- * aqui mesmo — não deixamos o erro estourar só no backend.
- */
 function ScoreForm({
   match,
   submitLabel,
@@ -87,9 +90,98 @@ function ScoreForm({
   );
 }
 
+function WoForm({ match, onDone, onCancel }: { match: Match; onDone: () => void; onCancel: () => void }) {
+  const [vencedor, setVencedor] = useState<"home" | "away">("home");
+  const [motivo, setMotivo] = useState("");
+  const refresh = useRefreshMatch(match);
+  const toast = useToast();
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      await startMatch(match.match_id);
+      const [h, a] = vencedor === "home" ? [1, 0] : [0, 1];
+      return registerResult(match.match_id, h, a, { motivo: motivo.trim() });
+    },
+    onSuccess: () => {
+      toast("success", "W.O. registrado");
+      onDone();
+      refresh();
+    },
+    onError: (error) => toast("error", (error as Error).message),
+  });
+
+  return (
+    <form
+      className="match-actions wo-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit.mutate();
+      }}
+    >
+      <span className="muted">Venceu por W.O.:</span>
+      <select value={vencedor} onChange={(event) => setVencedor(event.target.value as "home" | "away")}>
+        <option value="home">{match.home_team.name}</option>
+        <option value="away">{match.away_team.name}</option>
+      </select>
+      <input
+        type="text"
+        placeholder="motivo (opcional)"
+        value={motivo}
+        maxLength={200}
+        onChange={(event) => setMotivo(event.target.value)}
+        aria-label="motivo do W.O."
+      />
+      <button type="submit" disabled={submit.isPending}>
+        {submit.isPending ? "Registrando…" : "Registrar W.O. (1x0)"}
+      </button>
+      <button type="button" className="ghost" onClick={onCancel}>
+        Cancelar
+      </button>
+    </form>
+  );
+}
+
+function FinishedActions({ match }: { match: Match }) {
+  const [corrigindo, setCorrigindo] = useState(false);
+  const refresh = useRefreshMatch(match);
+  const toast = useToast();
+
+  const corrigir = useMutation({
+    mutationFn: ({ h, a }: { h: number; a: number }) => corrigirResultado(match.match_id, h, a),
+    onSuccess: () => {
+      toast("success", "Placar corrigido — a classificação atualiza em instantes");
+      setCorrigindo(false);
+      refresh();
+    },
+    onError: (error) => toast("error", (error as Error).message),
+  });
+
+  if (corrigindo) {
+    return (
+      <ScoreForm
+        match={match}
+        submitLabel="Salvar correção"
+        pendingLabel="Corrigindo…"
+        onSubmit={(h, a) => corrigir.mutate({ h, a })}
+        isPending={corrigir.isPending}
+        onCancel={() => setCorrigindo(false)}
+      />
+    );
+  }
+
+  return (
+    <div className="match-actions">
+      <button type="button" className="ghost" onClick={() => setCorrigindo(true)}>
+        ✎ Corrigir placar
+      </button>
+    </div>
+  );
+}
+
 function ScheduledActions({ match }: { match: Match }) {
-  const [mode, setMode] = useState<"none" | "schedule" | "result">("none");
+  const [mode, setMode] = useState<"none" | "schedule" | "result" | "wo">("none");
   const [kickoff, setKickoff] = useState("");
+  const [local, setLocal] = useState(match.local ?? "");
   const refresh = useRefreshMatch(match);
   const toast = useToast();
 
@@ -105,9 +197,9 @@ function ScheduledActions({ match }: { match: Match }) {
   const reschedule = useMutation({
     // datetime-local vem sem fuso; Date interpreta como hora local e
     // toISOString converte para UTC, que e o que a API espera
-    mutationFn: () => reagendarPartida(match.match_id, new Date(kickoff).toISOString()),
+    mutationFn: () => reagendarPartida(match.match_id, new Date(kickoff).toISOString(), local.trim() || null),
     onSuccess: () => {
-      toast("success", "Horário definido");
+      toast("success", "Horário e local definidos");
       setMode("none");
       setKickoff("");
       refresh();
@@ -133,7 +225,7 @@ function ScheduledActions({ match }: { match: Match }) {
   if (mode === "schedule") {
     return (
       <form
-        className="match-actions"
+        className="match-actions schedule-form"
         onSubmit={(event) => {
           event.preventDefault();
           if (kickoff !== "") reschedule.mutate();
@@ -144,6 +236,14 @@ function ScheduledActions({ match }: { match: Match }) {
           value={kickoff}
           onChange={(event) => setKickoff(event.target.value)}
           aria-label="data e horário da partida"
+        />
+        <input
+          type="text"
+          placeholder="Local (quadra, mesa, tabuleiro…)"
+          value={local}
+          maxLength={120}
+          onChange={(event) => setLocal(event.target.value)}
+          aria-label="local da partida"
         />
         <button type="submit" disabled={kickoff === "" || reschedule.isPending}>
           {reschedule.isPending ? "Salvando…" : "Salvar"}
@@ -168,6 +268,10 @@ function ScheduledActions({ match }: { match: Match }) {
     );
   }
 
+  if (mode === "wo") {
+    return <WoForm match={match} onDone={() => setMode("none")} onCancel={() => setMode("none")} />;
+  }
+
   return (
     <div className="match-actions">
       <button type="button" onClick={() => start.mutate()} disabled={start.isPending}>
@@ -177,17 +281,15 @@ function ScheduledActions({ match }: { match: Match }) {
         🏁 Placar final
       </button>
       <button type="button" className="ghost" onClick={() => setMode("schedule")}>
-        🕒 {match.scheduled_at ? "Remarcar" : "Definir horário"}
+        🕒 {match.scheduled_at || match.local ? "Remarcar / local" : "Definir horário / local"}
+      </button>
+      <button type="button" className="ghost" onClick={() => setMode("wo")}>
+        ⚖ W.O.
       </button>
     </div>
   );
 }
 
-/**
- * Contagem ao vivo: pontos genéricos (vale para qualquer esporte), ajustados
- * com +/− durante a partida. Encerrar usa o placar corrente; "outro placar"
- * abre a digitação manual.
- */
 function LiveActions({ match }: { match: Match }) {
   const [manual, setManual] = useState(false);
   const refresh = useRefreshMatch(match);
@@ -308,6 +410,11 @@ export function MatchCard({
           {match.status === "EM_ANDAMENTO" && "● "}
           {MATCH_STATUS_LABEL[match.status]}
         </span>
+        {match.wo && (
+          <span className="badge wo-badge" title={match.wo_motivo ?? "decisão administrativa"}>
+            ⚖ W.O.
+          </span>
+        )}
         <span className="meta">
           {phaseLabel && <>{phaseLabel} · </>}
           {championshipName && <>{championshipName} · </>}
@@ -315,6 +422,7 @@ export function MatchCard({
             (match.scheduled_at ? `início ${formatShortDateTime(match.scheduled_at)}` : "horário a definir")}
           {match.status === "EM_ANDAMENTO" && match.started_at && `começou ${formatShortDateTime(match.started_at)}`}
           {match.status === "FINALIZADA" && match.played_at && `encerrada ${formatShortDateTime(match.played_at)}`}
+          {match.local && match.status !== "FINALIZADA" && <> · 📍 {match.local}</>}
         </span>
       </div>
       <Link to={`/partidas/${match.match_id}`} className="teams-link">
@@ -328,6 +436,7 @@ export function MatchCard({
       </Link>
       {canManage && match.status === "AGENDADA" && <ScheduledActions match={match} />}
       {canManage && match.status === "EM_ANDAMENTO" && <LiveActions match={match} />}
+      {canManage && match.status === "FINALIZADA" && <FinishedActions match={match} />}
     </li>
   );
 }

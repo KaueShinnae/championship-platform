@@ -16,11 +16,6 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Token de sessão compacto assinado com HMAC-SHA256 e segredo compartilhado
- * entre os serviços (env AUTH_SECRET): {@code base64url(json)}.{@code base64url(hmac)}.
- * Grau de segurança de desenvolvimento — sem refresh/revogação; expiração de 7 dias.
- */
 @Component
 public class AuthTokens {
 
@@ -53,7 +48,9 @@ public class AuthTokens {
         }
     }
 
-    /** Id do usuário autenticado; lança 401 se o token faltar, expirar ou for inválido. */
+    public record Sessao(UUID id, String nome) {
+    }
+
     public UUID exigirUsuario(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
@@ -62,7 +59,23 @@ public class AuthTokens {
         return validar(header.substring("Bearer ".length()));
     }
 
-    /** Como {@link #exigirUsuario}, mas retorna null em vez de falhar (rotas de leitura). */
+    public Sessao sessao(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (header == null || !header.startsWith("Bearer ")) {
+            throw new NaoAutenticadoException("entre na sua conta para realizar esta acao");
+        }
+        String token = header.substring("Bearer ".length());
+        UUID id = validar(token);
+        try {
+            Map<?, ?> payload = objectMapper.readValue(
+                    Base64.getUrlDecoder().decode(token.split("\\.")[0]), Map.class);
+            String nome = payload.get("nome") == null ? "—" : payload.get("nome").toString();
+            return new Sessao(id, nome);
+        } catch (Exception e) {
+            return new Sessao(id, "—");
+        }
+    }
+
     public UUID usuarioOpcional(HttpServletRequest request) {
         try {
             return exigirUsuario(request);

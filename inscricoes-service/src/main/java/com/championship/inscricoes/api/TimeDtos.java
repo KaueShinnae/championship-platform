@@ -22,10 +22,6 @@ public class TimeDtos {
     public record JogadorView(UUID id, String nome) {
     }
 
-    /**
-     * Item da listagem do organizador: time inscrito + jogadores + status da
-     * saga (PENDENTE ate enrollment.confirmed.v1 ser processado).
-     */
     public record InscricaoDetalheResponse(
             UUID inscricaoId,
             UUID timeId,

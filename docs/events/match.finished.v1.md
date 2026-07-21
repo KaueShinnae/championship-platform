@@ -4,8 +4,7 @@
 Publicado pelo `partidas-service` quando o resultado de uma partida é
 registrado. É o gatilho do recálculo de classificação (SPEC.md §3):
 `ranking-service` consome este evento e atualiza sua projeção — nunca há
-chamada síncrona de `partidas-service` para `ranking-service` (CLAUDE.md
-"o que não fazer").
+chamada síncrona de `partidas-service` para `ranking-service`.
 
 ## Produtor
 `partidas-service` — via transactional outbox, gravado na mesma transação
@@ -32,6 +31,7 @@ que marca a `Partida` como `FINALIZADA`.
     "group_id": "uuid | null",
     "home_team": { "team_id": "uuid", "name": "string", "score": 0 },
     "away_team": { "team_id": "uuid", "name": "string", "score": 0 },
+    "wo": false,
     "played_at": "2026-07-16T12:00:00Z"
   }
 }
@@ -41,8 +41,12 @@ que marca a `Partida` como `FINALIZADA`.
 - `group_id` pode ser `null` — nesse caso `ranking-service` ignora o
   evento para fins de classificação por grupo (não há grupo pra atualizar),
   mas ainda marca o evento como processado (idempotência).
-- Critério de pontos (aplicado pelo `ranking-service`, não pelo produtor):
-  vitória = 3 pontos, empate = 1 ponto para cada lado, derrota = 0.
+- Critério de pontos de classificação (aplicado pelo `ranking-service`, não
+  pelo produtor): vitória = 3, empate = 1 para cada lado, derrota = 0.
+- `wo` (adicionado em torneios-em-geral): quando `true`, o resultado é uma
+  decisão administrativa (W.O.). Conta a vitória/derrota de classificação, mas
+  é **neutro no placar** — o consumidor não soma `score` a Pró/Contra/Saldo.
+  Campo opcional; ausente em eventos antigos equivale a `false`.
 
 ## Checklist (skill `kafka-event-design`)
 - [x] Nome segue a convenção `<dominio>.<evento>.v<n>`

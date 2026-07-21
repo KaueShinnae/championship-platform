@@ -8,7 +8,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Conta de usuário da plataforma (organizador em potencial de qualquer torneio). */
 @Entity
 @Table(name = "usuario")
 public class Usuario {

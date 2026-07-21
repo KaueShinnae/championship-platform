@@ -8,7 +8,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Deduplicação de consumer (skill kafka-event-design). */
 @Entity
 @Table(name = "processed_events")
 public class ProcessedEvent {

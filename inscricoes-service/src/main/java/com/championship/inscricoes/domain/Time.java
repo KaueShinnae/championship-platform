@@ -19,7 +19,6 @@ public class Time {
     @OneToMany(mappedBy = "time", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Jogador> jogadores = new ArrayList<>();
 
-    /** Quem cadastrou o time — base das sugestões de reuso (nulo em times legados). */
     @Column(name = "criado_por")
     private UUID criadoPor;
 
@@ -50,6 +49,18 @@ public class Time {
         Time time = new Time(UUID.randomUUID(), nome, criadoPor, Instant.now());
         nomesJogadores.forEach(nomeJogador -> time.jogadores.add(new Jogador(time, nomeJogador)));
         return time;
+    }
+
+    public void editar(String novoNome, List<String> nomesJogadores) {
+        if (novoNome == null || novoNome.isBlank() || novoNome.length() > 100) {
+            throw new IllegalArgumentException("nome do time deve ter entre 1 e 100 caracteres");
+        }
+        if (nomesJogadores == null || nomesJogadores.isEmpty()) {
+            throw new IllegalArgumentException("time precisa de pelo menos 1 jogador");
+        }
+        this.nome = novoNome;
+        this.jogadores.clear();
+        nomesJogadores.forEach(nomeJogador -> this.jogadores.add(new Jogador(this, nomeJogador)));
     }
 
     public UUID getId() {

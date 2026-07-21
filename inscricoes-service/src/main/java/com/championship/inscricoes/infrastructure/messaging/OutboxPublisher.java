@@ -10,12 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/**
- * Poller simples do padrão transactional outbox: lê eventos não publicados
- * e envia ao Kafka usando o tópico = tipo do evento (ex: team.registered.v1).
- * Em produção isso seria substituído por Debezium (CDC), mas polling é
- * suficiente para o MVP (ver skill kafka-event-design).
- */
 @Component
 public class OutboxPublisher {
 

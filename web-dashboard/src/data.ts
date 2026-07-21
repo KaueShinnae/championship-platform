@@ -25,7 +25,6 @@ export function useEnrollments(championshipId: string | null) {
   });
 }
 
-/** Permissão de gestão do usuário logado sobre um torneio (dono ou admin delegado). */
 export function useCanManage(championshipId: string | undefined): boolean {
   const { data: championships = [] } = useChampionships();
   if (!championshipId) return false;
@@ -68,7 +67,6 @@ export function useAllEnrollments(): { byChampionship: ChampionshipEnrollments[]
 
 // ---- utilidades de apresentacao ----
 
-/** Rotulos legiveis para group_id (UUID nunca aparece na UI): "Grupo A", "Grupo B"… por campeonato. */
 export function buildGroupLabels(matches: Match[]): Map<string, string> {
   const groupsByChampionship = new Map<string, string[]>();
   for (const match of matches) {
@@ -87,10 +85,6 @@ export function buildGroupLabels(matches: Match[]): Map<string, string> {
 
 const STATUS_ORDER: Record<Match["status"], number> = { EM_ANDAMENTO: 0, AGENDADA: 1, FINALIZADA: 2 };
 
-/**
- * Ao vivo primeiro, depois agendadas (mais proxima antes; sem horario por
- * ultimo), depois encerradas (mais recente antes).
- */
 export function sortMatches(matches: Match[]): Match[] {
   return [...matches].sort((a, b) => {
     if (STATUS_ORDER[a.status] !== STATUS_ORDER[b.status]) {

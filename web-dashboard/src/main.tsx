@@ -8,6 +8,7 @@ import { CreateTournamentPage } from "./pages/CreateTournamentPage";
 import { HomePage } from "./pages/HomePage";
 import { MatchDetailPage } from "./pages/MatchDetailPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
+import { TelaoPage } from "./pages/TelaoPage";
 import { TournamentDetailPage } from "./pages/TournamentDetailPage";
 import { TournamentsPage } from "./pages/TournamentsPage";
 import "./styles.css";
@@ -23,6 +24,9 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter([
+  // Telão: rota pública fullscreen SEM o layout do App (sem topbar/sidebar) —
+  // é um painel de parede para projetar numa TV, read-only e sem menus.
+  { path: "torneios/:championshipId/telao", element: <TelaoPage /> },
   {
     path: "/",
     element: <App />,

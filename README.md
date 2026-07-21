@@ -1,186 +1,233 @@
-# championship-platform
+# Championship Platform
 
-Plataforma de campeonato orientada a eventos com agente MCP integrado.
-Ver [SPEC.md](SPEC.md) para o detalhamento funcional e [ROADMAP.md](ROADMAP.md)
-para o plano por semana. Desenvolvimento guiado pela spec (SDD) — mudanças de
-comportamento começam por uma atualização do SPEC.md.
+Plataforma **event-driven** para gestão de torneios de qualquer modalidade
+(futsal, vôlei, xadrez, e-sports, cartas, torneios individuais). Microsserviços
+em Java/Spring Boot comunicando-se por Kafka, com um read model CQRS, um painel
+web para organizador e espectador, e um agente MCP para consultas em linguagem
+natural.
+
+O projeto é uma vitrine de padrões de sistemas distribuídos aplicados a um
+domínio real: **transactional outbox**, **consumers idempotentes**, **CQRS**,
+**saga coreografada** e **eventos versionados** — com o cuidado de nunca acoplar
+serviços por chamada síncrona.
+
+---
+
+## Destaques
+
+- **3 formatos de torneio** — pontos corridos, mata-mata e grupos + mata-mata,
+  com sorteio e chaveamento automáticos.
+- **Classificação de fonte única** com desempate transparente e auditável:
+  `pontos → confronto direto → saldo → pró → vitórias → sorteio visível`
+  (nunca um critério oculto). Terminologia neutra de modalidade — `Pró/Contra/Saldo`,
+  sem "gols".
+- **Regras de gestão reais**: W.O. neutro no placar, desistência de equipe em
+  cascata, disputa de 3º lugar, correção de resultado com repropagação do
+  bracket, limite de integrantes por equipe, e um log de gestão auditável.
+- **Operação do evento**: agendamento com data e **local** (quadra/mesa/tabuleiro),
+  detecção de conflito por equipe **e** por local, mesa de controle do dia, e
+  rodadas na fase de liga.
+- **Inscrição com aprovação**: capitão inscreve o time → organizador aprova →
+  confirmação via saga. Delegação de administradores por torneio.
+- **Telão** — painel público de parede (kiosk) para projetar numa TV: rotaciona
+  entre grade por quadra (ao vivo/próximo), agenda geral, classificação com
+  linha de corte e chaveamento, com ticker de resultados e relógio ao vivo.
+- **Agente MCP** — tools para consultar classificação/partidas e gerar recaps de
+  jogo com LLM, instrumentado com Langfuse.
+
+---
 
 ## Arquitetura
 
 ```mermaid
 flowchart LR
-    subgraph UI["web-dashboard (React)"]
-        PUB["Torneio + Detalhe de Partida<br/>(público, leitura)"]
-        ORG["Organizador<br/>(escrita, chave de acesso)"]
+    subgraph UI["web-dashboard — React + TS (Vite :5173)"]
+        ESP["Espectador / Telão<br/>(público, leitura)"]
+        ORG["Organizador<br/>(escrita, sessão autenticada)"]
     end
 
-    subgraph Servicos["Serviços Spring Boot (1 Postgres cada, outbox pattern)"]
-        INS["inscricoes-service :8081"]
-        PAR["partidas-service :8082"]
-        RAN["ranking-service :8083<br/>(read model CQRS)"]
+    subgraph SVC["Serviços Spring Boot — 1 Postgres cada, outbox pattern"]
+        INS["inscricoes-service :8081<br/>contas · times · inscrições"]
+        PAR["partidas-service :8082<br/>partidas · chaveamento · classificação"]
+        RAN["ranking-service :8083<br/>read model CQRS · feed"]
     end
 
-    K[("Kafka")]
-
-    MCP["mcp-agent-service (TS)<br/>tools MCP + recap LLM"]
-    OBS["OTel Collector → Jaeger :16686<br/>Langfuse (LLM)"]
+    K[("Kafka — KRaft")]
+    MCP["mcp-agent-service — TS<br/>tools MCP + recap LLM"]
+    OBS["OpenTelemetry → Jaeger :16686<br/>Langfuse (LLM)"]
 
     UI -->|"proxy /api/*"| INS & PAR & RAN
-    INS -->|"team.registered.v1<br/>enrollment.confirmed.v1 (saga)"| K
-    PAR -->|"match.scheduled/started/finished.v1"| K
-    K -->|"match.finished.v1"| RAN
+    INS -->|"championship.permissions.changed.v1<br/>team.registered.v1 (saga)<br/>championship.cancelled.v1"| K
+    PAR -->|"match.scheduled / started / finished.v1<br/>championship.completed.v1"| K
+    K -->|"championship.permissions.changed.v1"| PAR
+    K -->|"match.finished.v1 · championship.cancelled.v1"| RAN
+    K -->|"championship.completed.v1"| INS
     RAN -->|"ranking.updated.v1"| K
     MCP -->|"GET projeções"| PAR & RAN
-    Servicos -.->|traces| OBS
-    MCP -.->|"prompt/custo"| OBS
+    SVC -.->|traces| OBS
+    MCP -.->|"prompt / custo"| OBS
 ```
 
-O ponto central: `partidas-service` **nunca** chama `ranking-service` — o
-resultado vira evento (`match.finished.v1`, via transactional outbox) e a
-classificação é uma projeção CQRS recalculada pelo consumer idempotente.
+**Decisão central:** `partidas-service` nunca chama `ranking-service`. O
+resultado de uma partida vira o evento `match.finished.v1` (via outbox) e a
+classificação exibida no Monitoramento é uma projeção CQRS recalculada por um
+consumer idempotente. A **classificação autoritativa** (a que decide o avanço)
+vive no `partidas-service`, que tem os dados de partida para o confronto direto.
 
-## Serviços
-| Serviço | Papel | Status |
-|---|---|---|
-| [inscricoes-service](inscricoes-service/) | Times, jogadores, inscrição em campeonato | Semana 1 — funcional |
-| [partidas-service](partidas-service/) | Registro de partidas e resultados | Semana 2 — funcional |
-| [ranking-service](ranking-service/) | Projeção de classificação (read model) | Semana 2 — funcional |
-| [mcp-agent-service](mcp-agent-service/) | Tools MCP + geração de recap | Semana 3 — funcional |
-| [web-dashboard](web-dashboard/) | Dashboard de demonstração (SPA) | Semana 5 — funcional |
+### Fluxo de um resultado
 
-## Rodando local
+```mermaid
+sequenceDiagram
+    participant O as Organizador
+    participant P as partidas-service
+    participant DB as Postgres (partidas)
+    participant K as Kafka
+    participant R as ranking-service
 
-```bash
-npm run dev         # sobe tudo: Postgres/Kafka + 3 serviços + dashboard
-npm run dev:build   # idem, recompilando os jars antes (após mudar código Java)
-npm run down        # desliga tudo
+    O->>P: POST /matches/{id}/result
+    P->>DB: grava resultado + evento no outbox (mesma transação)
+    P->>P: avanço automático de fase (bracket / campeão)
+    Note over P,DB: transação confirma
+    P-->>K: outbox poller publica match.finished.v1
+    K-->>R: consumer idempotente (processed_events)
+    R->>R: recalcula group_standing (CQRS)
+    R-->>K: ranking.updated.v1
 ```
-No Git Bash ou WSL: `bash scripts/dev-up.sh` (ou `--build`).
-Idempotente: o que já estiver no ar é pulado. Logs em `%TEMP%\*.log`.
 
-Serviço MCP (opcional, requer `ANTHROPIC_API_KEY`):
+---
+
+## Stack
+
+| Camada | Tecnologia |
+|---|---|
+| Serviços | Java 21, Spring Boot 3, Spring Web, Spring Data JPA |
+| Mensageria | Apache Kafka (modo KRaft, sem ZooKeeper) |
+| Persistência | PostgreSQL (um banco por serviço), Flyway (migrations) |
+| Agente | TypeScript, Model Context Protocol (MCP), Anthropic API |
+| Frontend | React, TypeScript, Vite, TanStack Query, React Router |
+| Observabilidade | OpenTelemetry, Jaeger (tracing), Langfuse (LLM) |
+| Orquestração local | Docker Compose, npm scripts / PowerShell |
+| Testes | JUnit 5, Mockito, testes de contrato de evento, e2e via Node |
+
+### Padrões aplicados
+
+- **Transactional outbox** — evento e mudança de estado na mesma transação; um
+  poller publica no Kafka depois (nunca publica direto no handler).
+- **Consumer idempotente** — tabela `processed_events` deduplica reentregas.
+- **CQRS** — o `ranking-service` é um read model alimentado só por eventos.
+- **Saga coreografada** — inscrição confirmada por troca de eventos, sem orquestrador.
+- **Eventos versionados** — sufixo `.v1`, schema documentado em [`docs/events/`](docs/events/);
+  evolução aditiva compatível (ex.: campo `local` adicionado ao `match.scheduled.v1`).
+
+---
+
+## Funcionalidades
+
+<details>
+<summary><b>Gestão do torneio</b></summary>
+
+- Criar torneio em 3 formatos, editar (com inscrições abertas) e cancelar
+  (estado terminal que purga partidas e projeções via `championship.cancelled.v1`).
+- Sorteio e chaveamento automáticos; re-sortear e reabrir inscrições.
+- Aprovação de inscrições (capitão → organizador) e delegação de administradores.
+- Limite de integrantes por equipe (torneio individual = 1).
+</details>
+
+<details>
+<summary><b>Durante a competição</b></summary>
+
+- Placar parcial ao vivo, registro de resultado, W.O. (neutro no placar),
+  correção com repropagação do bracket, desistência de equipe em cascata.
+- Disputa de 3º lugar; classificação com desempate transparente.
+- Agendamento com horário e **local**; detecção de conflito por equipe e por local.
+- Rodadas na fase de liga ("Rodada 1, 2…") e mesa de controle do dia.
+- Log de gestão auditável de todas as ações administrativas.
+</details>
+
+<details>
+<summary><b>Espectador</b></summary>
+
+- Páginas públicas de torneio, partida, classificação e chaveamento.
+- **Telão** (kiosk): rota pública fullscreen que rotaciona entre grade por
+  quadra, agenda geral (todos ao vivo + próximos), classificação com linha de
+  corte e chaveamento — com ticker de resultados e relógio ao vivo.
+</details>
+
+<details>
+<summary><b>Agente MCP</b></summary>
+
+- Tools para consultar classificação e partidas com validação de input e
+  guardrails contra prompt injection.
+- `generate_match_recap` gera um resumo de jogo com LLM (Anthropic), com prompt,
+  latência e custo registrados no Langfuse.
+</details>
+
+---
+
+## Rodando localmente
+
+Pré-requisitos: **Docker**, **Java 21**, **Node 18+**.
+
 ```bash
-cd mcp-agent-service
-npm install
-npm run dev
+cp .env.example .env      # ajuste se quiser; o AUTH_SECRET de dev já vem preenchido
+npm run dev               # sobe infra + 3 serviços + dashboard (idempotente)
+npm run dev:build         # idem, recompilando os jars após mudar código Java
+npm run down              # desliga tudo
+```
+
+Dashboard em **http://localhost:5173**. No Git Bash/WSL: `bash scripts/dev-up.sh [--build]`.
+
+Agente MCP (opcional, requer `ANTHROPIC_API_KEY`):
+
+```bash
+cd mcp-agent-service && npm install && npm run dev
 ```
 
 ### Portas
-| Serviço | Porta |
-|---|---|
-| inscricoes-service | 8081 |
-| partidas-service | 8082 |
-| ranking-service | 8083 |
-| Postgres | 5432 |
-| Kafka | 9092 |
-| Kafka UI | 8090 |
-| OTel Collector (OTLP gRPC/HTTP) | 4317 / 4318 |
 
-## Semana 1 — o que já existe
-- Infra local: `docker-compose.yml` (Postgres com 1 banco por serviço, Kafka
-  em modo KRaft, Kafka UI, OTel Collector)
-- Eventos `team.registered.v1` e `enrollment.confirmed.v1` documentados em
-  [docs/events/](docs/events/)
-- `inscricoes-service` completo: cadastro de campeonato, inscrição de time
-  (com jogadores), transactional outbox, saga coreografada simples
-  (`team.registered.v1` → confirma inscrição → `enrollment.confirmed.v1`),
-  consumer idempotente, testes unitários + teste de contrato dos eventos
-- `mcp-agent-service`: scaffold TypeScript com as 3 tools do SPEC.md §4
-  definidas (schema + guardrails) — falta instrumentação Langfuse (Semana 4)
+| Serviço | Porta | | Serviço | Porta |
+|---|---|---|---|---|
+| inscricoes-service | 8081 | | Postgres | 5432 |
+| partidas-service | 8082 | | Kafka | 9092 |
+| ranking-service | 8083 | | Kafka UI | 8090 |
+| web-dashboard | 5173 | | Jaeger | 16686 |
 
-## Semana 2 — o que já existe
-- Eventos `match.scheduled.v1`, `match.finished.v1` e `ranking.updated.v1`
-  documentados em [docs/events/](docs/events/)
-- `partidas-service` completo: agendar partida, registrar resultado,
-  outbox publicando `match.scheduled.v1` / `match.finished.v1`
-- `ranking-service` completo: consumer idempotente de `match.finished.v1`,
-  read model `group_standing` (CQRS), endpoint
-  `GET /groups/{groupId}/standings`, publica `ranking.updated.v1`
-- Critério de aceite do SPEC atendido por construção: lançar um resultado
-  atualiza o ranking sem nenhuma chamada síncrona entre os serviços
+---
 
-### Testando o fluxo partidas → ranking
-```bash
-# 1. agendar uma partida (use UUIDs reais de times/campeonato/grupo)
-curl -X POST localhost:8082/matches -H 'Content-Type: application/json' -d '{
-  "championship_id": "550e8400-e29b-41d4-a716-446655440000",
-  "group_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-  "home_team_id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8",
-  "home_team_name": "Timaço FC",
-  "away_team_id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8",
-  "away_team_name": "Rival FC"
-}'
-
-# 2. registrar o resultado (use o match_id retornado)
-curl -X POST localhost:8082/matches/{matchId}/result \
-  -H 'Content-Type: application/json' \
-  -d '{"home_score": 2, "away_score": 1}'
-
-# 3. consultar a classificação atualizada via evento (sem chamada síncrona)
-curl localhost:8083/groups/6ba7b810-9dad-11d1-80b4-00c04fd430c8/standings
-```
-
-### Testando o fluxo do inscricoes-service
-```bash
-# 1. criar um campeonato
-curl -X POST localhost:8081/campeonatos -H 'Content-Type: application/json' \
-  -d '{"nome": "Copa Verão 2026"}'
-
-# 2. inscrever um time (use o id retornado acima)
-curl -X POST localhost:8081/campeonatos/{campeonatoId}/times \
-  -H 'Content-Type: application/json' \
-  -d '{"nome": "Timaço FC", "jogadores": ["Jogador 1", "Jogador 2"]}'
-
-# 3. acompanhar em localhost:8090 (Kafka UI): team.registered.v1 publicado,
-#    e enrollment.confirmed.v1 publicado logo em seguida pela saga
-```
-
-## Semana 3 — o que já existe
-- Servidor MCP registrado no repo via [.mcp.json](.mcp.json) — o Claude Code
-  detecta e conecta automaticamente ao abrir o projeto
-- Tools com guardrails testados: validação de UUID antes de tocar backend,
-  falha de backend vira erro estruturado `{error}` (nunca exceção crua),
-  dados de domínio delimitados contra prompt injection
-- Smoke test de integração MCP: `npx tsx scripts/mcp-smoke.ts <group_id> <match_id>`
-  (sobe o servidor via stdio como o Claude faria e exercita as 3 tools)
-- `generate_match_recap` funcional — requer `ANTHROPIC_API_KEY` no ambiente
-
-## Semana 5 — o que já existe
-- `web-dashboard/` (Vite + React + TS): painel de partidas com registro de
-  resultado, classificação ao vivo e **feed de eventos Kafka** — o mesmo
-  resultado aparece como `match.finished.v1` consumido e `ranking.updated.v1`
-  publicado, tornando o fluxo assíncrono visível na tela
-- Novos endpoints: `GET /matches` (partidas-service) e `GET /events/recent`
-  (ranking-service), ambos com teste
-- Proxy do Vite (sem CORS nos serviços Java, sem BFF) — decisão registrada
-  no parecer do tech-lead
+## Testes
 
 ```bash
-cd web-dashboard && npm install && npm run dev   # http://localhost:5173
+# testes de cada serviço (unitários + contrato de evento)
+cd inscricoes-service && ./mvnw test
+cd partidas-service   && ./mvnw test
+cd ranking-service    && ./mvnw test
+
+# fluxo ponta a ponta nos 3 formatos (requer a stack no ar)
+npm run e2e
+
+# frontend
+cd web-dashboard && npm run build   # type-check (tsc) + build de produção
 ```
 
-## Semana 4 — observabilidade
-- **Traces ponta a ponta no Jaeger** (http://localhost:16686): o trace da
-  publicação de `match.finished.v1` no partidas-service continua no consumer
-  do ranking-service — um único trace cruzando os dois serviços via Kafka,
-  incluindo o span customizado `ranking-service.recalculate_group`
-- Nota de arquitetura: com transactional outbox, o trace do HTTP request
-  termina na escrita do outbox **por design** (a publicação acontece em outra
-  transação, via poller) — o trace do hop Kafka nasce no poller
-- **Langfuse** no `generate_match_recap`: prompt, resposta, latência e tokens
-  registrados a cada geração (configure `LANGFUSE_PUBLIC_KEY`/`SECRET_KEY`)
-- **Eval do recap**: dataset golden com checagem determinística de
-  consistência factual (placar, nomes, anti-injection):
-  `cd mcp-agent-service && npx tsx scripts/eval-recap.ts`
-- Rascunho de post: [docs/linkedin-post.md](docs/linkedin-post.md)
+---
 
-## Subindo a stack completa (após reboot/primeira vez)
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\dev-up.ps1
+## Estrutura
+
 ```
-Sobe Docker Compose, aguarda o Kafka ficar saudável, empacota e inicia os
-3 serviços Spring, e imprime as portas. Use `-SkipBuild` se os jars já existem.
+championship-platform/
+├── inscricoes-service/   # contas, times, inscrições, permissões  (Java)
+├── partidas-service/     # partidas, chaveamento, classificação    (Java)
+├── ranking-service/      # read model CQRS + feed de eventos        (Java)
+├── mcp-agent-service/    # tools MCP + recap com LLM                (TS)
+├── web-dashboard/        # SPA: gestão, espectador e telão          (React/TS)
+├── docs/
+│   ├── events/           # schema de cada evento .v1
+│   └── decisions/        # registros de decisão de arquitetura (ADRs)
+├── infra/                # config do OTel Collector, dados locais
+├── scripts/              # subir/derrubar a stack, e2e, smoke MCP
+└── docker-compose.yml    # Postgres, Kafka (KRaft), Kafka UI, OTel
+```
 
-## Convenções
-Ver [CLAUDE.md](CLAUDE.md) e `.claude/skills/` para convenções de código,
-eventos e observabilidade seguidas neste repo.
+Detalhes funcionais em [SPEC.md](SPEC.md); schema dos eventos em
+[docs/events/](docs/events/); decisões de arquitetura em
+[docs/decisions/](docs/decisions/).

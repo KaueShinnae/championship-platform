@@ -2,6 +2,7 @@ package com.championship.partidas.application;
 
 import com.championship.partidas.domain.Partida;
 import com.championship.partidas.infrastructure.messaging.DomainEventWriter;
+import com.championship.partidas.infrastructure.persistence.GestaoLogRepository;
 import com.championship.partidas.infrastructure.persistence.PartidaRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +28,9 @@ class PartidaServiceTest {
 
     @Mock
     private ChaveamentoService chaveamentoService;
+
+    @Mock
+    private GestaoLogRepository gestaoLogRepository;
 
     @InjectMocks
     private PartidaService partidaService;
@@ -55,5 +59,24 @@ class PartidaServiceTest {
 
         assertThat(resultado).hasSize(1);
         verify(partidaRepository).findByGroupIdOrderByScheduledAtDesc(groupId);
+    }
+
+    @Test
+    void detectaConflitoDeLocalNoMesmoHorario() {
+        UUID campeonatoId = UUID.randomUUID();
+        java.time.Instant horario = java.time.Instant.parse("2026-07-20T19:00:00Z");
+        // duas partidas de times diferentes, mesmo horário, mesma quadra
+        Partida a = Partida.agendar(campeonatoId, UUID.randomUUID(),
+                UUID.randomUUID(), "A", UUID.randomUUID(), "B", horario, "Quadra 1");
+        Partida b = Partida.agendar(campeonatoId, UUID.randomUUID(),
+                UUID.randomUUID(), "C", UUID.randomUUID(), "D", horario, "quadra 1");
+        when(partidaRepository.findByCampeonatoId(campeonatoId)).thenReturn(List.of(a, b));
+
+        List<PartidaService.ConflitoHorario> conflitos = partidaService.conflitosDeHorario(campeonatoId);
+
+        assertThat(conflitos).hasSize(1);
+        assertThat(conflitos.get(0).tipo()).isEqualTo("LOCAL");
+        assertThat(conflitos.get(0).local()).isEqualToIgnoringCase("Quadra 1");
+        assertThat(conflitos.get(0).teamId()).isNull();
     }
 }

@@ -10,9 +10,9 @@ export const CHAMPIONSHIP_STATUS_LABEL: Record<Championship["status"], string> =
   SORTEADO: "Sorteio realizado",
   EM_ANDAMENTO: "Em andamento",
   ENCERRADO: "Encerrado",
+  CANCELADO: "Cancelado",
 };
 
-/** Grade de torneios clicáveis — usada no Início do visitante e na página Torneios do organizador. */
 export function TournamentGrid({ emptyMessage }: { emptyMessage: ReactNode }) {
   const { byChampionship, isLoading } = useAllEnrollments();
   const { data: matches = [] } = useMatches();

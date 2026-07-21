@@ -4,6 +4,7 @@ import com.championship.inscricoes.api.AuthController.UsuarioView;
 import com.championship.inscricoes.api.CampeonatoDtos.AdicionarAdminRequest;
 import com.championship.inscricoes.api.CampeonatoDtos.CampeonatoResponse;
 import com.championship.inscricoes.api.CampeonatoDtos.CriarCampeonatoRequest;
+import com.championship.inscricoes.api.CampeonatoDtos.EditarCampeonatoRequest;
 import com.championship.inscricoes.application.InscricaoService;
 import com.championship.inscricoes.domain.Campeonato;
 import com.championship.inscricoes.domain.Usuario;
@@ -34,8 +35,29 @@ public class CampeonatoController {
         UUID usuarioId = authTokens.exigirUsuario(http);
         boolean aprovacao = request.aprovacaoInscricoes() == null || request.aprovacaoInscricoes();
         Campeonato campeonato = inscricaoService.criarCampeonato(
-                request.nome(), request.formato(), usuarioId, aprovacao);
+                request.nome(), request.formato(), usuarioId, aprovacao,
+                request.minIntegrantes(), request.maxIntegrantes(),
+                request.disputaTerceiro() != null && request.disputaTerceiro());
         return ResponseEntity.status(201).body(CampeonatoResponse.from(campeonato, true, true));
+    }
+
+    @PutMapping("/{campeonatoId}")
+    public CampeonatoResponse editar(@PathVariable UUID campeonatoId,
+                                      @Valid @RequestBody EditarCampeonatoRequest request,
+                                      HttpServletRequest http) {
+        UUID usuarioId = authTokens.exigirUsuario(http);
+        boolean aprovacao = request.aprovacaoInscricoes() == null || request.aprovacaoInscricoes();
+        Campeonato campeonato = inscricaoService.editarCampeonato(
+                campeonatoId, usuarioId, request.nome(), aprovacao,
+                request.minIntegrantes(), request.maxIntegrantes(),
+                request.disputaTerceiro() != null && request.disputaTerceiro());
+        return toResponse(campeonato, usuarioId);
+    }
+
+    @PostMapping("/{campeonatoId}/cancelar")
+    public CampeonatoResponse cancelar(@PathVariable UUID campeonatoId, HttpServletRequest http) {
+        UUID usuarioId = authTokens.exigirUsuario(http);
+        return toResponse(inscricaoService.cancelarCampeonato(campeonatoId, usuarioId), usuarioId);
     }
 
     @GetMapping
@@ -85,6 +107,14 @@ public class CampeonatoController {
     public List<UsuarioView> listarAdmins(@PathVariable UUID campeonatoId) {
         return inscricaoService.listarAdmins(campeonatoId).stream()
                 .map(admin -> new UsuarioView(admin.getId(), admin.getNome(), admin.getEmail()))
+                .toList();
+    }
+
+    @GetMapping("/{campeonatoId}/gestao-log")
+    public List<CampeonatoDtos.GestaoLogResponse> gestaoLog(@PathVariable UUID campeonatoId) {
+        return inscricaoService.listarGestaoLog(campeonatoId).stream()
+                .map(l -> new CampeonatoDtos.GestaoLogResponse(
+                        l.getId(), l.getActorId(), l.getActorNome(), l.getAcao(), l.getDescricao(), l.getCreatedAt()))
                 .toList();
     }
 

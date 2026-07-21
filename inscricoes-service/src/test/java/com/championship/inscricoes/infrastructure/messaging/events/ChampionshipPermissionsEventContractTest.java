@@ -11,11 +11,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Teste de contrato: o JSON publicado para championship.permissions.changed.v1
- * casa com o schema em docs/events/championship.permissions.changed.v1.md
- * (skill kafka-event-design). O partidas-service desserializa esse formato.
- */
 @JsonTest
 class ChampionshipPermissionsEventContractTest {
 

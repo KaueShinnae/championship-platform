@@ -7,13 +7,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
-/**
- * Autorização por papel usando a projeção local de permissões (evento
- * championship.permissions.changed.v1) — nunca chamada síncrona a outro
- * serviço. Fail-closed quando a projeção conhece o campeonato; sem projeção
- * (legado sem dono ou janela de propagação de segundos), qualquer usuário
- * autenticado gerencia — mesma regra de produto do inscricoes-service.
- */
 @Service
 public class AutorizacaoService {
 

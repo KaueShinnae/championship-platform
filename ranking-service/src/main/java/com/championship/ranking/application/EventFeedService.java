@@ -12,21 +12,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Feed de eventos para o web-dashboard (SPEC.md §2): junta eventos consumidos
- * (processed_events) e publicados (outbox_event) numa linha do tempo única,
- * tornando visível o fluxo match.finished.v1 -> ranking.updated.v1.
- * Só leitura de dados que o serviço já registra — nenhuma tabela nova.
- */
 @Service
 public class EventFeedService {
 
     public enum Kind { CONSUMED, PUBLISHED }
 
-    /**
-     * Entrada do feed com os dados de rastreabilidade: id do evento (chave de
-     * deduplicação), trace id do OpenTelemetry e o payload JSON bruto.
-     */
     public record FeedEntry(Kind kind, String type, UUID eventId, UUID aggregateId,
                             String traceId, String payload, Instant at) {
     }

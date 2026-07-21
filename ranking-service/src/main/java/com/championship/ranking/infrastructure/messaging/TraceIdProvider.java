@@ -5,11 +5,6 @@ import io.micrometer.tracing.Tracer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
-/**
- * Trace id corrente (OpenTelemetry via Micrometer Tracing) para gravar junto
- * dos registros de auditoria (processed_events / outbox_event), ligando cada
- * evento persistido ao trace distribuído correspondente.
- */
 @Component
 public class TraceIdProvider {
 
@@ -19,7 +14,6 @@ public class TraceIdProvider {
         this.tracer = tracer;
     }
 
-    /** Trace id atual, ou null quando não há span ativo (ex.: testes locais). */
     public String currentTraceId() {
         Tracer available = tracer.getIfAvailable();
         if (available == null) {

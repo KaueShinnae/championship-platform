@@ -11,11 +11,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Sugestões de reuso de elenco ("Meus times"): times que o usuário cadastrou
- * ou que estão em torneios que ele gerencia. O reuso é sempre snapshot — o
- * dashboard copia nome/elenco para uma inscrição nova.
- */
 @RestController
 @RequestMapping("/meus-times")
 public class MeusTimesController {

@@ -3,6 +3,7 @@ package com.championship.ranking.application;
 import com.championship.ranking.domain.GroupStanding;
 import com.championship.ranking.infrastructure.messaging.DomainEventWriter;
 import com.championship.ranking.infrastructure.messaging.events.MatchFinishedPayload;
+import com.championship.ranking.infrastructure.messaging.events.MatchResultCorrectedPayload;
 import com.championship.ranking.infrastructure.messaging.events.RankingUpdatedPayload;
 import com.championship.ranking.infrastructure.messaging.events.TeamScore;
 import com.championship.ranking.infrastructure.persistence.GroupStandingRepository;
@@ -34,11 +35,6 @@ public class RankingProjectionService {
         this.observationRegistry = observationRegistry;
     }
 
-    /**
-     * Aplica um match.finished.v1 na projeção do grupo e grava
-     * ranking.updated.v1 no outbox, tudo na mesma transação.
-     * Partidas sem group_id são ignoradas (docs/events/match.finished.v1.md).
-     */
     @Transactional
     public void aplicarResultado(MatchFinishedPayload payload) {
         if (payload.groupId() == null) {
@@ -65,7 +61,34 @@ public class RankingProjectionService {
                         payload.championshipId(), payload.groupId(), time.teamId(), time.name()));
 
         standing.atualizarNomeTime(time.name());
-        standing.aplicarResultado(time.score(), adversario.score());
+        standing.aplicarResultado(time.score(), adversario.score(), payload.wo());
+        groupStandingRepository.save(standing);
+    }
+
+    @Transactional
+    public void aplicarCorrecao(MatchResultCorrectedPayload payload) {
+        if (payload.groupId() == null) {
+            return;
+        }
+        corrigirStanding(payload, payload.previousHome(), payload.previousAway(),
+                payload.correctedHome(), payload.correctedAway());
+        corrigirStanding(payload, payload.previousAway(), payload.previousHome(),
+                payload.correctedAway(), payload.correctedHome());
+
+        domainEventWriter.write(payload.groupId(), RankingUpdatedPayload.TYPE,
+                new RankingUpdatedPayload(payload.groupId(), payload.championshipId(), Instant.now()));
+    }
+
+    private void corrigirStanding(MatchResultCorrectedPayload payload,
+                                   TeamScore anteriorTime, TeamScore anteriorAdversario,
+                                   TeamScore novoTime, TeamScore novoAdversario) {
+        GroupStanding standing = groupStandingRepository
+                .findByGroupIdAndTeamId(payload.groupId(), novoTime.teamId())
+                .orElseGet(() -> GroupStanding.inicial(
+                        payload.championshipId(), payload.groupId(), novoTime.teamId(), novoTime.name()));
+
+        standing.reverterResultado(anteriorTime.score(), anteriorAdversario.score(), payload.wo());
+        standing.aplicarResultado(novoTime.score(), novoAdversario.score(), payload.wo());
         groupStandingRepository.save(standing);
     }
 
@@ -75,6 +98,7 @@ public class RankingProjectionService {
                 .sorted(Comparator.comparingInt(GroupStanding::getPoints).reversed()
                         .thenComparing(Comparator.comparingInt(GroupStanding::getGoalDifference).reversed())
                         .thenComparing(Comparator.comparingInt(GroupStanding::getGoalsFor).reversed())
+                        .thenComparing(Comparator.comparingInt(GroupStanding::getWins).reversed())
                         .thenComparing(GroupStanding::getTeamName))
                 .toList();
     }

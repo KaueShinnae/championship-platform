@@ -54,11 +54,6 @@ function BracketMatch({ match, myTeamId }: { match: Match; myTeamId?: string | n
   );
 }
 
-/**
- * Bracket do mata-mata: uma coluna por rodada; posições ainda não definidas
- * aparecem como placeholder (bye na 1ª rodada dos playoffs diretos; "aguardando"
- * nas demais). A coluna final mostra o campeão quando a final termina.
- */
 export function Bracket({
   matches,
   formato,
@@ -72,7 +67,8 @@ export function Bracket({
   slots?: BracketSlot[];
   myTeamId?: string | null;
 }) {
-  const playoffMatches = matches.filter((match) => match.stage === "PLAYOFF");
+  const terceiroLugar = matches.find((match) => match.terceiro_lugar);
+  const playoffMatches = matches.filter((match) => match.stage === "PLAYOFF" && !match.terceiro_lugar);
   const totalRounds = totalRoundsDoFormato(formato, teamCount);
 
   const byRoundAndPos = new Map<string, Match>();
@@ -135,6 +131,12 @@ export function Bracket({
           <div className={`bracket-match champion ${champion ? "" : "placeholder"}`}>
             {champion ? <span>🏆 {champion}</span> : <span className="meta">a definir</span>}
           </div>
+          {terceiroLugar && (
+            <>
+              <h3 className="third-place-title">3º lugar</h3>
+              <BracketMatch match={terceiroLugar} myTeamId={myTeamId} />
+            </>
+          )}
         </div>
       </div>
     </div>

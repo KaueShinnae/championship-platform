@@ -5,10 +5,6 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Registro de eventos já processados por este serviço (idempotência de consumer).
- * Antes de processar uma mensagem, checar se event_id já existe aqui.
- */
 @Entity
 @Table(name = "processed_events")
 public class ProcessedEvent {

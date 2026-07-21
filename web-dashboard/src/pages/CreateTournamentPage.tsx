@@ -48,9 +48,20 @@ export function CreateTournamentPage() {
   const [nome, setNome] = useState("");
   const [formato, setFormato] = useState<ChampionshipFormat | null>(null);
   const [aprovacao, setAprovacao] = useState(true);
+  const [minIntegrantes, setMinIntegrantes] = useState("");
+  const [maxIntegrantes, setMaxIntegrantes] = useState("");
+  const [disputaTerceiro, setDisputaTerceiro] = useState(false);
+
+  const temMataMata = formato === "PLAYOFFS" || formato === "GRUPOS_PLAYOFFS";
 
   const mutation = useMutation({
-    mutationFn: () => createChampionship(nome.trim(), formato!, aprovacao),
+    mutationFn: () =>
+      createChampionship(nome.trim(), formato!, {
+        aprovacaoInscricoes: aprovacao,
+        minIntegrantes: minIntegrantes === "" ? null : Number(minIntegrantes),
+        maxIntegrantes: maxIntegrantes === "" ? null : Number(maxIntegrantes),
+        disputaTerceiro: temMataMata && disputaTerceiro,
+      }),
     onSuccess: (championship) => {
       queryClient.invalidateQueries({ queryKey: ["championships"] });
       toast("success", `Torneio "${championship.nome}" criado — agora inscreva os times`);
@@ -155,6 +166,43 @@ export function CreateTournamentPage() {
             </span>
           </button>
         </div>
+
+        <label className="field-label">Integrantes por equipe (opcional)</label>
+        <div className="row team-size-row">
+          <input
+            type="number"
+            min={1}
+            placeholder="mínimo"
+            value={minIntegrantes}
+            onChange={(event) => setMinIntegrantes(event.target.value)}
+            aria-label="mínimo de integrantes por equipe"
+          />
+          <span className="muted">a</span>
+          <input
+            type="number"
+            min={1}
+            placeholder="máximo"
+            value={maxIntegrantes}
+            onChange={(event) => setMaxIntegrantes(event.target.value)}
+            aria-label="máximo de integrantes por equipe"
+          />
+          <span className="hint">
+            deixe em branco para não limitar · torneio individual (xadrez, corrida): use 1 e 1
+          </span>
+        </div>
+
+        {temMataMata && (
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={disputaTerceiro}
+              onChange={(event) => setDisputaTerceiro(event.target.checked)}
+            />
+            <span>
+              Disputa de <strong>3º lugar</strong> — os perdedores das semifinais se enfrentam pelo bronze
+            </span>
+          </label>
+        )}
 
         <div className="match-actions">
           <Link to="/torneios" className="button-ghost">

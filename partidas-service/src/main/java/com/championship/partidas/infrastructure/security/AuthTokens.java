@@ -15,13 +15,6 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Validação do token de sessão emitido pelo inscricoes-service — mesmo
- * formato e segredo compartilhado (env AUTH_SECRET), validado localmente,
- * sem chamada síncrona entre serviços. Este serviço só valida; nunca emite.
- * A autorização por papel (dono/admin do torneio) é feita pelo
- * AutorizacaoService sobre a projeção de championship.permissions.changed.v1.
- */
 @Component
 public class AuthTokens {
 
@@ -39,8 +32,14 @@ public class AuthTokens {
         this.objectMapper = objectMapper;
     }
 
-    /** Id do usuário autenticado; lança 401 se o token faltar, expirar ou for inválido. */
+    public record Sessao(UUID id, String nome) {
+    }
+
     public UUID exigirUsuario(HttpServletRequest request) {
+        return sessao(request).id();
+    }
+
+    public Sessao sessao(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
             throw new NaoAutenticadoException("entre na sua conta para realizar esta acao");
@@ -58,7 +57,8 @@ public class AuthTokens {
             if (Instant.now().getEpochSecond() > exp) {
                 throw new NaoAutenticadoException("sessao expirada — entre novamente");
             }
-            return UUID.fromString((String) payload.get("sub"));
+            String nome = payload.get("nome") == null ? "—" : payload.get("nome").toString();
+            return new Sessao(UUID.fromString((String) payload.get("sub")), nome);
         } catch (NaoAutenticadoException e) {
             throw e;
         } catch (Exception e) {

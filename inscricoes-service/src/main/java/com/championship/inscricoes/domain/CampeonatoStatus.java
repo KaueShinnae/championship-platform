@@ -4,5 +4,6 @@ public enum CampeonatoStatus {
     ABERTO,
     SORTEADO,
     EM_ANDAMENTO,
-    ENCERRADO
+    ENCERRADO,
+    CANCELADO
 }

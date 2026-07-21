@@ -46,7 +46,6 @@ export function toggleMyTeam(championshipId: string, team: MyTeam): void {
   notify();
 }
 
-/** Time marcado como "meu" neste torneio (ou null). */
 export function useMyTeam(championshipId: string | undefined): MyTeam | null {
   const store = useSyncExternalStore((listener) => {
     listeners.add(listener);

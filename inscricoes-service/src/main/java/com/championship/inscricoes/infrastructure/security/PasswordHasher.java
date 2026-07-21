@@ -7,12 +7,6 @@ import javax.crypto.spec.PBEKeySpec;
 import java.security.SecureRandom;
 import java.util.Base64;
 
-/**
- * Hash de senha com PBKDF2 (JDK puro, sem dependência nova). Formato
- * armazenado: {@code pbkdf2$<iteracoes>$<saltBase64>$<hashBase64>}.
- * Suficiente para o estágio atual do produto; trocar por biblioteca dedicada
- * se a plataforma sair do escopo de demo.
- */
 @Component
 public class PasswordHasher {
 

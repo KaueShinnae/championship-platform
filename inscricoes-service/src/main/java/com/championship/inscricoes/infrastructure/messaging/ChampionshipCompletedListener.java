@@ -11,12 +11,6 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Encerramento automático do torneio: consome championship.completed.v1
- * (publicado pelo partidas-service quando o campeão é definido) e marca o
- * campeonato como ENCERRADO com o campeão registrado. Idempotente via
- * processed_events (skill kafka-event-design).
- */
 @Component
 public class ChampionshipCompletedListener {
 

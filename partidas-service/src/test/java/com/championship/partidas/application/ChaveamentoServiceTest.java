@@ -93,6 +93,10 @@ class ChaveamentoServiceTest {
         assertThat(criadas).hasSize(6); // 4*3/2
         assertThat(criadas).allMatch(partida -> partida.getStage() == PartidaStage.GRUPOS);
         assertThat(criadas.stream().map(Partida::getGroupId).distinct()).hasSize(1);
+        // organizado por rodada (liga em ondas): 4 times -> 3 rodadas de 2 jogos
+        assertThat(criadas.stream().map(Partida::getRound).distinct().sorted().toList())
+                .containsExactly(1, 2, 3);
+        assertThat(criadas.stream().filter(partida -> partida.getRound() == 1)).hasSize(2);
     }
 
     @Test
@@ -147,7 +151,7 @@ class ChaveamentoServiceTest {
     void vencedorDaFinalPublicaChampionshipCompleted() {
         UUID campeonatoId = UUID.randomUUID();
         when(chaveamentoRepository.findById(campeonatoId)).thenReturn(Optional.of(
-                new TorneioChaveamento(campeonatoId, FormatoTorneio.PLAYOFFS, 1, "[]", null)));
+                new TorneioChaveamento(campeonatoId, FormatoTorneio.PLAYOFFS, 1, "[]", null, false)));
 
         Partida finalDoTorneio = Partida.dePlayoff(campeonatoId, 1, 0,
                 UUID.randomUUID(), "Timaço FC", UUID.randomUUID(), "Rival FC");
@@ -163,7 +167,7 @@ class ChaveamentoServiceTest {
     void vencedorDeRodadaIntermediariaOcupaSlotECriaProximaPartidaQuandoOParEstaCompleto() {
         UUID campeonatoId = UUID.randomUUID();
         when(chaveamentoRepository.findById(campeonatoId)).thenReturn(Optional.of(
-                new TorneioChaveamento(campeonatoId, FormatoTorneio.PLAYOFFS, 2, "[]", null)));
+                new TorneioChaveamento(campeonatoId, FormatoTorneio.PLAYOFFS, 2, "[]", null, false)));
 
         Partida semi1 = Partida.dePlayoff(campeonatoId, 1, 0,
                 UUID.randomUUID(), "Timaço FC", UUID.randomUUID(), "Rival FC");
@@ -203,7 +207,7 @@ class ChaveamentoServiceTest {
         String drawOrder = new ObjectMapper().writeValueAsString(
                 List.of(lider.teamId().toString(), segundo.teamId().toString(), terceiro.teamId().toString()));
         when(chaveamentoRepository.findById(campeonatoId)).thenReturn(Optional.of(
-                new TorneioChaveamento(campeonatoId, FormatoTorneio.PONTOS_CORRIDOS, null, drawOrder, null)));
+                new TorneioChaveamento(campeonatoId, FormatoTorneio.PONTOS_CORRIDOS, null, drawOrder, null, false)));
         when(partidaRepository.findByCampeonatoId(campeonatoId)).thenReturn(List.of(jogo1, jogo2, jogo3));
 
         service.aoFinalizar(jogo3);
@@ -240,7 +244,7 @@ class ChaveamentoServiceTest {
         String groupIds = mapper.writeValueAsString(List.of(grupoA.toString(), grupoB.toString()));
 
         when(chaveamentoRepository.findById(campeonatoId)).thenReturn(Optional.of(
-                new TorneioChaveamento(campeonatoId, FormatoTorneio.GRUPOS_PLAYOFFS, 2, drawOrder, groupIds)));
+                new TorneioChaveamento(campeonatoId, FormatoTorneio.GRUPOS_PLAYOFFS, 2, drawOrder, groupIds, false)));
         when(partidaRepository.findByCampeonatoId(campeonatoId)).thenReturn(partidas);
 
         service.aoFinalizar(partidas.get(5));

@@ -84,6 +84,80 @@ class CampeonatoTest {
     }
 
     @Test
+    void validaTamanhoDaEquipeQuandoDefinido() {
+        Campeonato campeonato = Campeonato.criar("Xadrez Individual", CampeonatoFormato.PONTOS_CORRIDOS,
+                java.util.UUID.randomUUID(), true, 1, 1, false);
+
+        assertThat(campeonato.getMinIntegrantes()).isEqualTo(1);
+        campeonato.validarNumeroDeIntegrantes(1); // ok
+        assertThatThrownBy(() -> campeonato.validarNumeroDeIntegrantes(2))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("máximo");
+    }
+
+    @Test
+    void semLimiteDeEquipeNaoRestringe() {
+        Campeonato campeonato = Campeonato.criar("Aberto", CampeonatoFormato.PONTOS_CORRIDOS);
+
+        campeonato.validarNumeroDeIntegrantes(1);
+        campeonato.validarNumeroDeIntegrantes(40); // sem limite = qualquer quantidade
+    }
+
+    @Test
+    void terceiroLugarSoValeNoMataMata() {
+        Campeonato pontos = Campeonato.criar("Liga", CampeonatoFormato.PONTOS_CORRIDOS,
+                java.util.UUID.randomUUID(), true, null, null, true);
+        Campeonato playoffs = Campeonato.criar("Copa", CampeonatoFormato.PLAYOFFS,
+                java.util.UUID.randomUUID(), true, null, null, true);
+
+        assertThat(pontos.temDisputaTerceiro()).isFalse(); // ignorado em pontos corridos
+        assertThat(playoffs.temDisputaTerceiro()).isTrue();
+    }
+
+    @Test
+    void editaSoComOTorneioAberto() {
+        Campeonato campeonato = Campeonato.criar("Copa", CampeonatoFormato.PLAYOFFS,
+                java.util.UUID.randomUUID(), true, null, null, false);
+
+        campeonato.editar("Copa Renomeada", false, 2, 5, true);
+        assertThat(campeonato.getNome()).isEqualTo("Copa Renomeada");
+        assertThat(campeonato.exigeAprovacaoDeInscricoes()).isFalse();
+        assertThat(campeonato.getMinIntegrantes()).isEqualTo(2);
+        assertThat(campeonato.getMaxIntegrantes()).isEqualTo(5);
+        assertThat(campeonato.temDisputaTerceiro()).isTrue();
+
+        campeonato.sortear();
+        assertThatThrownBy(() -> campeonato.editar("Outro", true, null, null, false))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void cancelaDeQualquerEstadoNaoTerminal() {
+        Campeonato aberto = Campeonato.criar("Copa", CampeonatoFormato.PLAYOFFS, java.util.UUID.randomUUID());
+        aberto.cancelar();
+        assertThat(aberto.getStatus()).isEqualTo(CampeonatoStatus.CANCELADO);
+        assertThat(aberto.aceitaInscricoes()).isFalse();
+
+        Campeonato emAndamento = Campeonato.criar("Liga", CampeonatoFormato.PLAYOFFS, java.util.UUID.randomUUID());
+        emAndamento.sortear();
+        emAndamento.iniciar();
+        emAndamento.cancelar();
+        assertThat(emAndamento.getStatus()).isEqualTo(CampeonatoStatus.CANCELADO);
+    }
+
+    @Test
+    void naoCancelaTorneioEncerradoNemDuasVezes() {
+        Campeonato campeonato = Campeonato.criar("Copa", CampeonatoFormato.PLAYOFFS, java.util.UUID.randomUUID());
+        campeonato.sortear();
+        campeonato.iniciar();
+        campeonato.encerrar(java.util.UUID.randomUUID(), "Timaço FC");
+        assertThatThrownBy(campeonato::cancelar).isInstanceOf(IllegalStateException.class);
+
+        Campeonato outro = Campeonato.criar("Liga", CampeonatoFormato.PLAYOFFS, java.util.UUID.randomUUID());
+        outro.cancelar();
+        assertThatThrownBy(outro::cancelar).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void bloqueiaTransicoesForaDeOrdem() {
         Campeonato campeonato = Campeonato.criar("Copa Verão 2026", CampeonatoFormato.PLAYOFFS);
 

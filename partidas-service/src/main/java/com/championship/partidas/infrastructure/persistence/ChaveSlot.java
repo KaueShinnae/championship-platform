@@ -10,11 +10,6 @@ import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Slot ocupado no bracket: o time que entra na rodada {@code round} na posição
- * {@code slot}. Quando os dois slots de um confronto (2p e 2p+1) estão
- * ocupados, a partida da posição p é criada. Também representa byes.
- */
 @Entity
 @Table(name = "chave_slot")
 public class ChaveSlot {

@@ -7,10 +7,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
-/**
- * Grava o evento na tabela outbox dentro da transação de domínio corrente.
- * Nunca publica diretamente no Kafka aqui — isso é responsabilidade do OutboxPublisher.
- */
 @Component
 public class DomainEventWriter {
 

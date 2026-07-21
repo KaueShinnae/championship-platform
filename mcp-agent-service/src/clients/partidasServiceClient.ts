@@ -9,11 +9,6 @@ export interface MatchResult {
   status: string;
 }
 
-/**
- * Le dados de uma partida do partidas-service.
- * Endpoint alvo: GET /matches/{matchId} — a implementar no partidas-service
- * (ROADMAP.md Semana 2).
- */
 export async function fetchMatchResult(matchId: string): Promise<MatchResult | null> {
   const response = await fetch(`${config.partidasServiceUrl}/matches/${matchId}`);
   if (response.status === 404) {

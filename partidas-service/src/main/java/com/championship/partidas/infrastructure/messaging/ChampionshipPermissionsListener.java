@@ -13,11 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
-/**
- * Mantém a projeção local de permissões: cada evento é um snapshot completo
- * (dono + admins), então a atualização é substituir todas as linhas do
- * campeonato. Idempotente via processed_events (skill kafka-event-design).
- */
 @Component
 public class ChampionshipPermissionsListener {
 

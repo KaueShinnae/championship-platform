@@ -25,7 +25,6 @@ export function formatDate(iso: string): string {
   });
 }
 
-/** Data completa com segundos, para rastreabilidade no Monitoramento. */
 export function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit",

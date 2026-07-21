@@ -11,12 +11,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Testes de contrato dos eventos do ranking-service (skill kafka-event-design):
- * - lado consumidor: desserializa um match.finished.v1 literal, exatamente
- *   como o partidas-service publica (docs/events/match.finished.v1.md)
- * - lado produtor: serializa ranking.updated.v1 no schema documentado
- */
 @JsonTest
 class RankingEventsContractTest {
 

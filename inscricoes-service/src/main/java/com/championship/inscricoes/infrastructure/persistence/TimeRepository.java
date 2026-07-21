@@ -9,11 +9,6 @@ import java.util.UUID;
 
 public interface TimeRepository extends JpaRepository<Time, UUID> {
 
-    /**
-     * Times sugeridos para reuso: os que o usuário cadastrou (como capitão ou
-     * organizador) e os inscritos em torneios que ele gerencia. Fetch-join dos
-     * jogadores porque o resultado é consumido fora da transação.
-     */
     @Query("""
             select distinct t from Time t
             left join fetch t.jogadores

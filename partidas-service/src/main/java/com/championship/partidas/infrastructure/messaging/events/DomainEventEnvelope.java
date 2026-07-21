@@ -3,10 +3,6 @@ package com.championship.partidas.infrastructure.messaging.events;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Envelope padrão de todo evento publicado no Kafka (ver docs/events/).
- * event_id é a chave de deduplicação usada pelos consumers idempotentes.
- */
 public record DomainEventEnvelope<T>(
         UUID eventId,
         Instant occurredAt,

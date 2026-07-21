@@ -10,10 +10,6 @@ import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Projeção local de championship.permissions.changed.v1: quem pode gerenciar
- * partidas de cada campeonato (dono + admins delegados no inscricoes-service).
- */
 @Entity
 @Table(name = "campeonato_permissao")
 public class CampeonatoPermissao {

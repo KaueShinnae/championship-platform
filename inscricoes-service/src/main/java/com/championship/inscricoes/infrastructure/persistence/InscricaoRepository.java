@@ -12,11 +12,6 @@ public interface InscricaoRepository extends JpaRepository<Inscricao, UUID> {
 
     Optional<Inscricao> findByTimeIdAndCampeonatoId(UUID timeId, UUID campeonatoId);
 
-    /**
-     * Unicidade de time por campeonato (SPEC.md §2): nome comparado sem
-     * diferenciar maiúsculas para bloquear reinscrição acidental. Inscrições
-     * RECUSADAS não contam — o capitão pode tentar de novo.
-     */
     @Query("""
             select count(i) > 0 from Inscricao i
             where i.campeonato.id = :campeonatoId
@@ -25,7 +20,6 @@ public interface InscricaoRepository extends JpaRepository<Inscricao, UUID> {
             """)
     boolean existsAtivaByCampeonatoIdAndNomeTime(UUID campeonatoId, String nomeTime);
 
-    /** Guarda-corpo: no máximo 1 inscrição PENDENTE por capitão por torneio. */
     @Query("""
             select count(i) > 0 from Inscricao i
             where i.campeonato.id = :campeonatoId
@@ -34,10 +28,6 @@ public interface InscricaoRepository extends JpaRepository<Inscricao, UUID> {
             """)
     boolean existsPendenteDoCapitao(UUID campeonatoId, UUID capitaoUsuarioId);
 
-    /**
-     * Fetch-join de time e jogadores: a listagem é consumida fora da
-     * transação (open-in-view desligado), então tudo vem carregado.
-     */
     @Query("""
             select distinct i from Inscricao i
             join fetch i.time t

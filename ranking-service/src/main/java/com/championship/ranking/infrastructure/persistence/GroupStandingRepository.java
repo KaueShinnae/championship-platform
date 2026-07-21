@@ -12,4 +12,6 @@ public interface GroupStandingRepository extends JpaRepository<GroupStanding, UU
     Optional<GroupStanding> findByGroupIdAndTeamId(UUID groupId, UUID teamId);
 
     List<GroupStanding> findByGroupIdOrderByPointsDesc(UUID groupId);
+
+    void deleteByCampeonatoId(UUID campeonatoId);
 }

@@ -40,9 +40,11 @@ public class Partida {
     @Column(nullable = false, length = 20)
     private PartidaStatus status;
 
-    /** Horário marcado; null = "a definir" (organizador define depois). */
     @Column(name = "scheduled_at")
     private Instant scheduledAt;
+
+    @Column(name = "local", length = 120)
+    private String local;
 
     @Column(name = "started_at")
     private Instant startedAt;
@@ -63,13 +65,22 @@ public class Partida {
     @Column(name = "bracket_pos")
     private Integer bracketPos;
 
+    @Column(nullable = false)
+    private boolean wo = false;
+
+    @Column(name = "wo_motivo", length = 200)
+    private String woMotivo;
+
+    @Column(name = "terceiro_lugar", nullable = false)
+    private boolean terceiroLugar = false;
+
     protected Partida() {
     }
 
     private Partida(UUID id, UUID campeonatoId, UUID groupId,
                      UUID homeTeamId, String homeTeamName,
                      UUID awayTeamId, String awayTeamName,
-                     Instant scheduledAt,
+                     Instant scheduledAt, String local,
                      PartidaStage stage, Integer round, Integer bracketPos) {
         this.id = id;
         this.campeonatoId = campeonatoId;
@@ -80,6 +91,7 @@ public class Partida {
         this.awayTeamName = awayTeamName;
         this.status = PartidaStatus.AGENDADA;
         this.scheduledAt = scheduledAt;
+        this.local = normalizarLocal(local);
         this.createdAt = Instant.now();
         this.stage = stage;
         this.round = round;
@@ -90,22 +102,48 @@ public class Partida {
                                    UUID homeTeamId, String homeTeamName,
                                    UUID awayTeamId, String awayTeamName,
                                    Instant scheduledAt) {
+        return agendar(campeonatoId, groupId, homeTeamId, homeTeamName, awayTeamId, awayTeamName, scheduledAt, null);
+    }
+
+    public static Partida agendar(UUID campeonatoId, UUID groupId,
+                                   UUID homeTeamId, String homeTeamName,
+                                   UUID awayTeamId, String awayTeamName,
+                                   Instant scheduledAt, String local) {
         validarTimes(homeTeamId, homeTeamName, awayTeamId, awayTeamName);
         // scheduledAt null = horario "a definir" (nunca inventar data)
         return new Partida(UUID.randomUUID(), campeonatoId, groupId,
                 homeTeamId, homeTeamName, awayTeamId, awayTeamName,
-                scheduledAt,
+                scheduledAt, local,
                 groupId != null ? PartidaStage.GRUPOS : null, null, null);
     }
 
-    /** Partida de mata-mata: pertence a uma rodada e a uma posição do bracket. */
+    public static Partida deGrupo(UUID campeonatoId, UUID groupId, int round,
+                                   UUID homeTeamId, String homeTeamName,
+                                   UUID awayTeamId, String awayTeamName) {
+        validarTimes(homeTeamId, homeTeamName, awayTeamId, awayTeamName);
+        return new Partida(UUID.randomUUID(), campeonatoId, groupId,
+                homeTeamId, homeTeamName, awayTeamId, awayTeamName,
+                null, null, PartidaStage.GRUPOS, round, null);
+    }
+
     public static Partida dePlayoff(UUID campeonatoId, int round, int bracketPos,
                                      UUID homeTeamId, String homeTeamName,
                                      UUID awayTeamId, String awayTeamName) {
         validarTimes(homeTeamId, homeTeamName, awayTeamId, awayTeamName);
         return new Partida(UUID.randomUUID(), campeonatoId, null,
                 homeTeamId, homeTeamName, awayTeamId, awayTeamName,
-                null, PartidaStage.PLAYOFF, round, bracketPos);
+                null, null, PartidaStage.PLAYOFF, round, bracketPos);
+    }
+
+    public static Partida deTerceiroLugar(UUID campeonatoId, int round,
+                                           UUID homeTeamId, String homeTeamName,
+                                           UUID awayTeamId, String awayTeamName) {
+        validarTimes(homeTeamId, homeTeamName, awayTeamId, awayTeamName);
+        Partida partida = new Partida(UUID.randomUUID(), campeonatoId, null,
+                homeTeamId, homeTeamName, awayTeamId, awayTeamName,
+                null, null, PartidaStage.PLAYOFF, round, 1);
+        partida.terceiroLugar = true;
+        return partida;
     }
 
     private static void validarTimes(UUID homeTeamId, String homeTeamName,
@@ -121,8 +159,11 @@ public class Partida {
         }
     }
 
-    /** Remarca data/horário — só enquanto a partida não foi iniciada. */
     public void reagendar(Instant novoHorario) {
+        reagendar(novoHorario, this.local);
+    }
+
+    public void reagendar(Instant novoHorario, String local) {
         if (this.status != PartidaStatus.AGENDADA) {
             throw new IllegalStateException("so partida agendada pode ser remarcada: " + id + " esta " + status);
         }
@@ -130,6 +171,7 @@ public class Partida {
             throw new IllegalArgumentException("novo horario e obrigatorio");
         }
         this.scheduledAt = novoHorario;
+        this.local = normalizarLocal(local);
     }
 
     public void iniciar() {
@@ -140,11 +182,6 @@ public class Partida {
         this.startedAt = Instant.now();
     }
 
-    /**
-     * Placar parcial durante a partida — ferramenta de contagem do organizador
-     * (pontos genéricos, vale para qualquer esporte). Empate é permitido aqui;
-     * a exigência de vencedor no mata-mata vale só no encerramento.
-     */
     public void atualizarPlacar(int homeScore, int awayScore) {
         if (this.status != PartidaStatus.EM_ANDAMENTO) {
             throw new IllegalStateException(
@@ -158,10 +195,34 @@ public class Partida {
     }
 
     public void registrarResultado(int homeScore, int awayScore) {
+        registrarResultado(homeScore, awayScore, false, null);
+    }
+
+    public void registrarResultado(int homeScore, int awayScore, boolean wo, String motivo) {
         if (this.status != PartidaStatus.EM_ANDAMENTO) {
             throw new IllegalStateException(
                     "resultado so pode ser registrado com a partida em andamento: " + id + " esta " + status);
         }
+        validarPlacar(homeScore, awayScore);
+        this.homeScore = homeScore;
+        this.awayScore = awayScore;
+        this.wo = wo;
+        this.woMotivo = wo ? motivo : null;
+        this.status = PartidaStatus.FINALIZADA;
+        this.playedAt = Instant.now();
+    }
+
+    public void corrigirResultado(int homeScore, int awayScore) {
+        if (this.status != PartidaStatus.FINALIZADA) {
+            throw new IllegalStateException(
+                    "so um resultado ja registrado pode ser corrigido: " + id + " esta " + status);
+        }
+        validarPlacar(homeScore, awayScore);
+        this.homeScore = homeScore;
+        this.awayScore = awayScore;
+    }
+
+    private void validarPlacar(int homeScore, int awayScore) {
         if (homeScore < 0 || awayScore < 0) {
             throw new IllegalArgumentException("placar nao pode ser negativo");
         }
@@ -169,14 +230,27 @@ public class Partida {
             throw new IllegalArgumentException(
                     "partida eliminatoria precisa de um vencedor — registre o placar final ja incluindo a decisao (prorrogacao/penaltis)");
         }
-        this.homeScore = homeScore;
-        this.awayScore = awayScore;
-        this.status = PartidaStatus.FINALIZADA;
-        this.playedAt = Instant.now();
+    }
+
+    public void substituirTime(boolean casa, UUID teamId, String teamName) {
+        if (this.status != PartidaStatus.AGENDADA) {
+            throw new IllegalStateException("so uma partida agendada pode ter os times substituidos: " + id);
+        }
+        if (casa) {
+            this.homeTeamId = teamId;
+            this.homeTeamName = teamName;
+        } else {
+            this.awayTeamId = teamId;
+            this.awayTeamName = teamName;
+        }
     }
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private static String normalizarLocal(String local) {
+        return isBlank(local) ? null : local.trim();
     }
 
     public UUID getId() {
@@ -223,6 +297,10 @@ public class Partida {
         return scheduledAt;
     }
 
+    public String getLocal() {
+        return local;
+    }
+
     public Instant getStartedAt() {
         return startedAt;
     }
@@ -243,12 +321,31 @@ public class Partida {
         return bracketPos;
     }
 
-    /** Id do vencedor — só para partidas finalizadas sem empate (mata-mata). */
+    public boolean isWo() {
+        return wo;
+    }
+
+    public String getWoMotivo() {
+        return woMotivo;
+    }
+
     public UUID vencedorId() {
         return homeScore > awayScore ? homeTeamId : awayTeamId;
     }
 
     public String vencedorNome() {
         return homeScore > awayScore ? homeTeamName : awayTeamName;
+    }
+
+    public UUID perdedorId() {
+        return homeScore > awayScore ? awayTeamId : homeTeamId;
+    }
+
+    public String perdedorNome() {
+        return homeScore > awayScore ? awayTeamName : homeTeamName;
+    }
+
+    public boolean isTerceiroLugar() {
+        return terceiroLugar;
     }
 }

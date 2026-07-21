@@ -18,8 +18,7 @@ da criação da `Partida`.
 
 ## Decisão de modelagem: nomes de time denormalizados
 `partidas-service` não faz chamada síncrona a `inscricoes-service` para
-resolver nome de time (ver CLAUDE.md "o que não fazer" — comunicação
-sempre via Kafka/assíncrona). Para o MVP, quem cria a partida informa
+resolver nome de time (comunicação sempre via Kafka/assíncrona). Para o MVP, quem cria a partida informa
 `team_id` e `team_name` no payload da requisição (event-carried state
 transfer simplificado). `partidas-service` nunca é dono desse dado — só
 o repassa.
@@ -41,7 +40,8 @@ o repassa.
     "group_id": "uuid | null",
     "home_team": { "team_id": "uuid", "name": "string" },
     "away_team": { "team_id": "uuid", "name": "string" },
-    "scheduled_at": "2026-07-16T10:00:00Z | null"
+    "scheduled_at": "2026-07-16T10:00:00Z | null",
+    "local": "string (quadra/mesa/tabuleiro) | null"
   }
 }
 ```
@@ -49,6 +49,11 @@ o repassa.
 `scheduled_at` é `null` quando o horário ainda está "a definir" (partidas
 geradas pelo sorteio nascem sem horário; o organizador define depois e o
 evento é reemitido com o valor preenchido).
+
+`local` (adição **compatível** ao schema — o `.v1` continua válido) é a
+sede/local físico da partida para torneios presenciais multi-local (quadra,
+mesa, tabuleiro). `null` = "a definir". Consumidores anteriores à adição o
+ignoram; mensagens gravadas antes da adição o desserializam como `null`.
 
 ## Checklist (skill `kafka-event-design`)
 - [x] Nome segue a convenção `<dominio>.<evento>.v<n>`

@@ -51,7 +51,7 @@ class RankingProjectionServiceTest {
                 UUID.randomUUID(), championshipId, groupId,
                 new TeamScore(homeTeamId, "Timaço FC", homeScore),
                 new TeamScore(awayTeamId, "Rival FC", awayScore),
-                Instant.now());
+                false, Instant.now());
     }
 
     @Test

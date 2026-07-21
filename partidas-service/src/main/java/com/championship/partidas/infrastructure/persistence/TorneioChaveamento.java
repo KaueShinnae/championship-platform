@@ -8,11 +8,6 @@ import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Configuração do sorteio de um campeonato: formato, total de rodadas do
- * mata-mata, a ordem sorteada dos times (último critério de desempate) e a
- * ordem dos grupos (A, B, C...). Gravada no "sortear confrontos".
- */
 @Entity
 @Table(name = "torneio_chaveamento")
 public class TorneioChaveamento {
@@ -36,6 +31,9 @@ public class TorneioChaveamento {
     @Column(name = "group_ids", columnDefinition = "jsonb")
     private String groupIds;
 
+    @Column(name = "disputa_terceiro", nullable = false)
+    private boolean disputaTerceiro = false;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -43,12 +41,13 @@ public class TorneioChaveamento {
     }
 
     public TorneioChaveamento(UUID campeonatoId, FormatoTorneio formato, Integer totalRounds,
-                               String drawOrder, String groupIds) {
+                               String drawOrder, String groupIds, boolean disputaTerceiro) {
         this.campeonatoId = campeonatoId;
         this.formato = formato;
         this.totalRounds = totalRounds;
         this.drawOrder = drawOrder;
         this.groupIds = groupIds;
+        this.disputaTerceiro = disputaTerceiro;
         this.createdAt = Instant.now();
     }
 
@@ -70,5 +69,9 @@ public class TorneioChaveamento {
 
     public String getGroupIds() {
         return groupIds;
+    }
+
+    public boolean isDisputaTerceiro() {
+        return disputaTerceiro;
     }
 }

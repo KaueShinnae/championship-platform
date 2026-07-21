@@ -21,10 +21,6 @@ const SYSTEM_PROMPT =
   "Voce escreve recaps curtos (3-4 frases) de partidas de campeonato, em portugues, " +
   `tom neutro e factual. ${DATA_NOT_INSTRUCTION_PREAMBLE}`;
 
-/**
- * Gera o texto do recap a partir dos dados da partida. Usado pela tool MCP
- * e pelo script de eval (mesmo caminho de prompt = eval representativa).
- */
 export async function generateRecapText(match: MatchResult): Promise<string> {
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
 

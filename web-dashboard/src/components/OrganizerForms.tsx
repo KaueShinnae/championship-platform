@@ -7,12 +7,6 @@ import { useToast } from "../ui/toast";
 // A criação de torneio vive em /torneios/novo (CreateTournamentPage) e o
 // agendamento manual de partidas foi substituído pelo sorteio automático.
 
-/**
- * Inscrição de time — usado pelo organizador (auto-confirma via saga) e pelo
- * capitão (fica aguardando aprovação). "Meus times" sugere elencos de
- * torneios anteriores do usuário; reusar copia um snapshot (editar depois
- * não altera o torneio antigo).
- */
 export function EnrollTeamForm({
   championshipId,
   title = "Inscrever time",
@@ -99,7 +93,7 @@ export function EnrollTeamForm({
       </div>
       <div className="row">
         <input
-          placeholder="Jogadores separados por vírgula"
+          placeholder="Integrantes separados por vírgula (1 para torneio individual)"
           value={jogadores}
           onChange={(event) => setJogadores(event.target.value)}
         />
@@ -109,7 +103,7 @@ export function EnrollTeamForm({
       </div>
       {parsedPlayers.length > 0 && (
         <span className="hint">
-          {parsedPlayers.length} jogador{parsedPlayers.length > 1 ? "es" : ""}: {parsedPlayers.join(" · ")}
+          {parsedPlayers.length} integrante{parsedPlayers.length > 1 ? "s" : ""}: {parsedPlayers.join(" · ")}
         </span>
       )}
     </form>

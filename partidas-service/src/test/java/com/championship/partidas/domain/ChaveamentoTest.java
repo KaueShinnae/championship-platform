@@ -43,6 +43,32 @@ class ChaveamentoTest {
     }
 
     @Test
+    void rodadasDoRodizioCobremTodosOsConfrontosSemRepetirTimeNaRodada() {
+        for (int n : new int[]{4, 5, 6}) {
+            List<List<int[]>> rodadas = Chaveamento.todosContraTodosPorRodada(n);
+
+            // par (ímpar folga 1): n-1 rodadas; ímpar: n rodadas
+            assertThat(rodadas).hasSize(n % 2 == 0 ? n - 1 : n);
+
+            int totalJogos = 0;
+            java.util.Set<String> confrontos = new java.util.HashSet<>();
+            for (List<int[]> rodada : rodadas) {
+                java.util.Set<Integer> jogandoNaRodada = new java.util.HashSet<>();
+                for (int[] par : rodada) {
+                    totalJogos++;
+                    // nenhum time joga duas vezes na mesma rodada
+                    assertThat(jogandoNaRodada.add(par[0])).isTrue();
+                    assertThat(jogandoNaRodada.add(par[1])).isTrue();
+                    confrontos.add(par[0] + "-" + par[1]);
+                }
+            }
+            // turno único: cada confronto uma vez só, total n*(n-1)/2
+            assertThat(totalJogos).isEqualTo(n * (n - 1) / 2);
+            assertThat(confrontos).hasSize(n * (n - 1) / 2);
+        }
+    }
+
+    @Test
     void bracketUsaProximaPotenciaDe2() {
         assertThat(Chaveamento.proximaPotenciaDe2(2)).isEqualTo(2);
         assertThat(Chaveamento.proximaPotenciaDe2(5)).isEqualTo(8);

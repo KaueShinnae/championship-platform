@@ -10,7 +10,6 @@ import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Administrador delegado de um campeonato (além do dono). */
 @Entity
 @Table(name = "campeonato_admin")
 public class CampeonatoAdmin {

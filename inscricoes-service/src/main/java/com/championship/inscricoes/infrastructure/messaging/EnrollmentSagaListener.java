@@ -12,12 +12,6 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Próximo passo da saga coreografada de inscrição (ver SPEC.md §3):
- * ao consumir team.registered.v1, confirma a inscrição pendente e publica
- * enrollment.confirmed.v1. Sem orquestrador central — cada serviço reage
- * ao evento anterior e decide o próprio próximo passo.
- */
 @Component
 public class EnrollmentSagaListener {
 

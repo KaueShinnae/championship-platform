@@ -4,12 +4,6 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Ciclo de vida do torneio (ver especificação de formatos):
- * ABERTO -(sortear)-> SORTEADO -(iniciar)-> EM_ANDAMENTO -(campeão)-> ENCERRADO.
- * Inscrições só são aceitas em ABERTO; o sorteio pode ser refeito ou
- * descartado (reabrir) enquanto o torneio não iniciar.
- */
 @Entity
 @Table(name = "campeonato")
 public class Campeonato {
@@ -34,13 +28,20 @@ public class Campeonato {
     @Column(name = "campeao_nome", length = 100)
     private String campeaoNome;
 
-    /** Dono do torneio; null em campeonatos legados (criados antes das contas). */
     @Column(name = "dono_id")
     private UUID donoId;
 
-    /** true = inscrição de capitão fica PENDENTE até o organizador aprovar. */
     @Column(name = "aprovacao_inscricoes", nullable = false)
     private boolean aprovacaoInscricoes = true;
+
+    @Column(name = "min_integrantes")
+    private Integer minIntegrantes;
+
+    @Column(name = "max_integrantes")
+    private Integer maxIntegrantes;
+
+    @Column(name = "disputa_terceiro", nullable = false)
+    private boolean disputaTerceiro = false;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -49,26 +50,48 @@ public class Campeonato {
     }
 
     private Campeonato(UUID id, String nome, CampeonatoFormato formato, CampeonatoStatus status,
-                        UUID donoId, boolean aprovacaoInscricoes, Instant createdAt) {
+                        UUID donoId, boolean aprovacaoInscricoes,
+                        Integer minIntegrantes, Integer maxIntegrantes, boolean disputaTerceiro, Instant createdAt) {
         this.id = id;
         this.nome = nome;
         this.formato = formato;
         this.status = status;
         this.donoId = donoId;
         this.aprovacaoInscricoes = aprovacaoInscricoes;
+        this.minIntegrantes = minIntegrantes;
+        this.maxIntegrantes = maxIntegrantes;
+        this.disputaTerceiro = disputaTerceiro;
         this.createdAt = createdAt;
     }
 
     public static Campeonato criar(String nome, CampeonatoFormato formato, UUID donoId,
-                                    boolean aprovacaoInscricoes) {
+                                    boolean aprovacaoInscricoes, Integer minIntegrantes, Integer maxIntegrantes,
+                                    boolean disputaTerceiro) {
         if (nome == null || nome.isBlank() || nome.length() > 100) {
             throw new IllegalArgumentException("nome do campeonato deve ter entre 1 e 100 caracteres");
         }
         if (formato == null) {
             throw new IllegalArgumentException("formato do campeonato e obrigatorio");
         }
+        if (minIntegrantes != null && minIntegrantes < 1) {
+            throw new IllegalArgumentException("mínimo de integrantes deve ser pelo menos 1");
+        }
+        if (minIntegrantes != null && maxIntegrantes != null && maxIntegrantes < minIntegrantes) {
+            throw new IllegalArgumentException("máximo de integrantes não pode ser menor que o mínimo");
+        }
         return new Campeonato(UUID.randomUUID(), nome, formato, CampeonatoStatus.ABERTO, donoId,
-                aprovacaoInscricoes, Instant.now());
+                aprovacaoInscricoes, minIntegrantes, maxIntegrantes,
+                disputaTerceiro && formato != CampeonatoFormato.PONTOS_CORRIDOS, Instant.now());
+    }
+
+    public static Campeonato criar(String nome, CampeonatoFormato formato, UUID donoId,
+                                    boolean aprovacaoInscricoes, Integer minIntegrantes, Integer maxIntegrantes) {
+        return criar(nome, formato, donoId, aprovacaoInscricoes, minIntegrantes, maxIntegrantes, false);
+    }
+
+    public static Campeonato criar(String nome, CampeonatoFormato formato, UUID donoId,
+                                    boolean aprovacaoInscricoes) {
+        return criar(nome, formato, donoId, aprovacaoInscricoes, null, null);
     }
 
     public static Campeonato criar(String nome, CampeonatoFormato formato, UUID donoId) {
@@ -79,12 +102,41 @@ public class Campeonato {
         return criar(nome, formato, null);
     }
 
-    /** Compatibilidade com o fluxo antigo: sem formato explícito, pontos corridos. */
     public static Campeonato criar(String nome) {
         return criar(nome, CampeonatoFormato.PONTOS_CORRIDOS, null);
     }
 
-    /** Dono ou campeonato legado (sem dono) — admins são verificados no serviço. */
+    public void editar(String nome, boolean aprovacaoInscricoes,
+                        Integer minIntegrantes, Integer maxIntegrantes, boolean disputaTerceiro) {
+        if (status != CampeonatoStatus.ABERTO) {
+            throw new IllegalStateException("só um campeonato ABERTO pode ser editado: " + status);
+        }
+        if (nome == null || nome.isBlank() || nome.length() > 100) {
+            throw new IllegalArgumentException("nome do campeonato deve ter entre 1 e 100 caracteres");
+        }
+        if (minIntegrantes != null && minIntegrantes < 1) {
+            throw new IllegalArgumentException("mínimo de integrantes deve ser pelo menos 1");
+        }
+        if (minIntegrantes != null && maxIntegrantes != null && maxIntegrantes < minIntegrantes) {
+            throw new IllegalArgumentException("máximo de integrantes não pode ser menor que o mínimo");
+        }
+        this.nome = nome;
+        this.aprovacaoInscricoes = aprovacaoInscricoes;
+        this.minIntegrantes = minIntegrantes;
+        this.maxIntegrantes = maxIntegrantes;
+        this.disputaTerceiro = disputaTerceiro && formato != CampeonatoFormato.PONTOS_CORRIDOS;
+    }
+
+    public void cancelar() {
+        if (status == CampeonatoStatus.ENCERRADO) {
+            throw new IllegalStateException("um torneio já encerrado não pode ser cancelado");
+        }
+        if (status == CampeonatoStatus.CANCELADO) {
+            throw new IllegalStateException("o torneio já está cancelado");
+        }
+        this.status = CampeonatoStatus.CANCELADO;
+    }
+
     public boolean ehDono(UUID usuarioId) {
         return donoId == null || donoId.equals(usuarioId);
     }
@@ -93,7 +145,29 @@ public class Campeonato {
         return donoId == null;
     }
 
-    /** Inscrição de capitão precisa da aprovação do organizador? (escolha da criação) */
+    public void validarNumeroDeIntegrantes(int quantidade) {
+        if (minIntegrantes != null && quantidade < minIntegrantes) {
+            throw new IllegalArgumentException(
+                    "este torneio exige no mínimo " + minIntegrantes + " integrante(s) por equipe");
+        }
+        if (maxIntegrantes != null && quantidade > maxIntegrantes) {
+            throw new IllegalArgumentException(
+                    "este torneio permite no máximo " + maxIntegrantes + " integrante(s) por equipe");
+        }
+    }
+
+    public Integer getMinIntegrantes() {
+        return minIntegrantes;
+    }
+
+    public Integer getMaxIntegrantes() {
+        return maxIntegrantes;
+    }
+
+    public boolean temDisputaTerceiro() {
+        return disputaTerceiro;
+    }
+
     public boolean exigeAprovacaoDeInscricoes() {
         return aprovacaoInscricoes;
     }
@@ -102,7 +176,6 @@ public class Campeonato {
         return status == CampeonatoStatus.ABERTO;
     }
 
-    /** ABERTO -> SORTEADO; re-sortear em SORTEADO é permitido (no-op de status). */
     public void sortear() {
         if (status != CampeonatoStatus.ABERTO && status != CampeonatoStatus.SORTEADO) {
             throw new IllegalStateException("sorteio so e permitido com o campeonato ABERTO ou SORTEADO: " + status);
@@ -110,7 +183,6 @@ public class Campeonato {
         this.status = CampeonatoStatus.SORTEADO;
     }
 
-    /** SORTEADO -> ABERTO: descarta o sorteio e reabre as inscrições. */
     public void reabrirInscricoes() {
         if (status != CampeonatoStatus.SORTEADO) {
             throw new IllegalStateException("so um campeonato SORTEADO pode reabrir inscricoes: " + status);
@@ -118,7 +190,6 @@ public class Campeonato {
         this.status = CampeonatoStatus.ABERTO;
     }
 
-    /** SORTEADO -> EM_ANDAMENTO: trava inscrições e chaveamento. */
     public void iniciar() {
         if (status != CampeonatoStatus.SORTEADO) {
             throw new IllegalStateException("so um campeonato SORTEADO pode ser iniciado: " + status);
@@ -126,7 +197,6 @@ public class Campeonato {
         this.status = CampeonatoStatus.EM_ANDAMENTO;
     }
 
-    /** EM_ANDAMENTO -> ENCERRADO, registrando o campeão (championship.completed.v1). */
     public void encerrar(UUID campeaoTimeId, String campeaoNome) {
         if (status != CampeonatoStatus.EM_ANDAMENTO) {
             throw new IllegalStateException("so um campeonato EM_ANDAMENTO pode ser encerrado: " + status);

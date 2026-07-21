@@ -12,11 +12,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Teste de contrato: garante que o JSON publicado no Kafka para
- * team.registered.v1 e enrollment.confirmed.v1 casa com o schema
- * documentado em docs/events/*.md (skill kafka-event-design).
- */
 @JsonTest
 class TeamRegisteredEventContractTest {
 

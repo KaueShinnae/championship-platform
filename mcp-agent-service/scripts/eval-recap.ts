@@ -1,12 +1,3 @@
-/**
- * Eval do recap de partida (skill observability-langfuse): roda o mesmo
- * caminho de geracao da tool MCP contra o dataset golden e checa
- * consistencia factual de forma deterministica (nomes, placar, e ausencia
- * de alucinacao/vazamento de prompt). Cada geracao tambem e registrada no
- * Langfuse quando as chaves estao configuradas.
- *
- * Uso: npx tsx scripts/eval-recap.ts   (requer ANTHROPIC_API_KEY)
- */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

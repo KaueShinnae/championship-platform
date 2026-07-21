@@ -39,8 +39,8 @@ function TeamCampaign({ groupId, teamId }: { groupId: string; teamId: string }) 
 
   return (
     <p className="meta">
-      {entry.team_name}: {entry.points} pts · {entry.wins}V {entry.draws}E {entry.losses}D · gols {entry.goals_for}:
-      {entry.goals_against}
+      {entry.team_name}: {entry.pontos} pts · {entry.vitorias}V {entry.empates}E {entry.derrotas}D · saldo{" "}
+      {entry.saldo >= 0 ? `+${entry.saldo}` : entry.saldo}
     </p>
   );
 }
@@ -104,6 +104,11 @@ export function MatchDetailPage() {
             <strong>Agendada para</strong>{" "}
             {match.scheduled_at ? formatDateTime(match.scheduled_at) : "horário a definir"}
           </li>
+          {match.local && (
+            <li>
+              <strong>Local</strong> 📍 {match.local}
+            </li>
+          )}
           {match.started_at && (
             <li>
               <strong>Começou</strong> {formatDateTime(match.started_at)}

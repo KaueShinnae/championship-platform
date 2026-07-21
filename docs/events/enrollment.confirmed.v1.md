@@ -39,7 +39,7 @@ que atualiza o status da `Inscricao` para `CONFIRMADA`.
 - `event_id` é obrigatório e único (chave de deduplicação no consumer).
 - Só é publicado depois que `team.registered.v1` foi processado com sucesso
   pelo próprio `inscricoes-service` (saga coreografada, sem orquestrador
-  central no MVP — ver ROADMAP.md "Depois" para versão orquestrada).
+  central no MVP).
 - `group_id` pode ser `null` até que o sorteio de grupos aconteça.
 
 ## Checklist (skill `kafka-event-design`)

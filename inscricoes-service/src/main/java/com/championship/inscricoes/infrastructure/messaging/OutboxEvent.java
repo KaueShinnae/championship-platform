@@ -7,11 +7,6 @@ import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Transactional outbox: gravado na mesma transação da mudança de domínio.
- * Um poller separado (OutboxPublisher) lê linhas não publicadas e envia ao Kafka,
- * garantindo consistência "at least once" com o estado do banco (skill kafka-event-design).
- */
 @Entity
 @Table(name = "outbox_event")
 public class OutboxEvent {

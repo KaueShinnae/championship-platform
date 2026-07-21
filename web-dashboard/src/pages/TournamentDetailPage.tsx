@@ -1,15 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   addAdmin,
   aprovarInscricao,
+  cancelarCampeonato,
   Championship,
   ChampionshipFormat,
   descartarConfrontos,
+  desistirTime,
+  editarCampeonato,
+  editarTime,
   Enrollment,
   fetchAdmins,
   fetchBracketSlots,
+  fetchConflitos,
   gerarConfrontos,
   iniciarCampeonato,
   Match,
@@ -20,10 +25,14 @@ import {
   sortearCampeonato,
 } from "../api";
 import { useAuth } from "../auth";
+import { AttentionPanel } from "../components/AttentionPanel";
 import { Bracket, nomeDaRodada, totalRoundsDoFormato } from "../components/Bracket";
+import { ExportButton } from "../components/ExportButton";
 import { GroupsPanel } from "../components/GroupsPanel";
+import { ManagementLog } from "../components/ManagementLog";
 import { MatchList } from "../components/MatchCard";
 import { EnrollTeamForm } from "../components/OrganizerForms";
+import { ScheduleTools } from "../components/ScheduleTools";
 import { StandingsPanel } from "../components/StandingsPanel";
 import { CHAMPIONSHIP_STATUS_LABEL } from "../components/TournamentGrid";
 import { buildGroupLabels, sortMatches, useChampionships, useEnrollments, useMatches } from "../data";
@@ -51,6 +60,7 @@ const STEP_BY_STATUS: Record<Championship["status"], number> = {
   SORTEADO: 1,
   EM_ANDAMENTO: 2,
   ENCERRADO: 3,
+  CANCELADO: 0, // não renderizado — torneio cancelado mostra banner próprio
 };
 
 function Stepper({ status }: { status: Championship["status"] }) {
@@ -91,7 +101,6 @@ function ShareButton({ championship }: { championship: Championship }) {
   );
 }
 
-/** Painel de operação do gestor: sortear, re-sortear, reabrir e iniciar. */
 function SetupPanel({
   championship,
   confirmedTeams,
@@ -112,7 +121,7 @@ function SetupPanel({
 
   const sortear = useMutation({
     mutationFn: async () => {
-      await gerarConfrontos(championship.id, championship.formato, confirmedTeams);
+      await gerarConfrontos(championship.id, championship.formato, confirmedTeams, championship.disputa_terceiro);
       return sortearCampeonato(championship.id);
     },
     onSuccess: () => {
@@ -212,7 +221,133 @@ function SetupPanel({
   return null;
 }
 
-/** Delegação de administradores — só o dono vê (adicionar e remover). */
+function EnrollmentItem({
+  enrollment,
+  championship,
+  canManage,
+  isMyTeam,
+  statusTexto,
+  onRemove,
+  removing,
+  onWithdraw,
+  withdrawing,
+}: {
+  enrollment: Enrollment;
+  championship: Championship;
+  canManage: boolean;
+  isMyTeam: boolean;
+  statusTexto: string;
+  onRemove: () => void;
+  removing: boolean;
+  onWithdraw?: () => void;
+  withdrawing?: boolean;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [nome, setNome] = useState(enrollment.time_nome);
+  const [jogadores, setJogadores] = useState(enrollment.jogadores.map((j) => j.nome).join(", "));
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  const parsed = jogadores.split(",").map((j) => j.trim()).filter(Boolean);
+  const podeEditar = canManage && championship.status === "ABERTO";
+
+  const salvar = useMutation({
+    mutationFn: () => editarTime(championship.id, enrollment.inscricao_id, nome.trim(), parsed),
+    onSuccess: () => {
+      toast("success", "Time atualizado");
+      setEditando(false);
+      queryClient.invalidateQueries({ queryKey: ["enrollments", championship.id] });
+    },
+    onError: (error) => toast("error", (error as Error).message),
+  });
+
+  if (editando) {
+    return (
+      <li>
+        <form
+          className="org-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (nome.trim() !== "" && parsed.length > 0) salvar.mutate();
+          }}
+        >
+          <div className="row">
+            <input value={nome} maxLength={100} onChange={(event) => setNome(event.target.value)} aria-label="nome do time" />
+          </div>
+          <div className="row">
+            <input
+              value={jogadores}
+              onChange={(event) => setJogadores(event.target.value)}
+              aria-label="integrantes separados por vírgula"
+            />
+            <button type="submit" disabled={nome.trim() === "" || parsed.length === 0 || salvar.isPending}>
+              {salvar.isPending ? "Salvando…" : "Salvar"}
+            </button>
+            <button type="button" className="ghost" onClick={() => setEditando(false)}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </li>
+    );
+  }
+
+  return (
+    <li className={isMyTeam ? "my-team" : ""}>
+      <div className="enrollment-header">
+        <strong>
+          <button
+            type="button"
+            className="star-button"
+            title={isMyTeam ? "Deixar de seguir este time" : "Marcar como meu time"}
+            onClick={() => toggleMyTeam(championship.id, { teamId: enrollment.time_id, name: enrollment.time_nome })}
+          >
+            {isMyTeam ? "★" : "☆"}
+          </button>
+          {enrollment.time_nome}
+        </strong>
+        <span className={`badge ${enrollment.status.toLowerCase()}`}>{statusTexto}</span>
+        {podeEditar && (
+          <button type="button" className="link-button" onClick={() => setEditando(true)}>
+            editar
+          </button>
+        )}
+        {podeEditar && (
+          <button
+            type="button"
+            className="link-button"
+            disabled={removing}
+            onClick={() => {
+              if (window.confirm(`Remover "${enrollment.time_nome}" do torneio?`)) onRemove();
+            }}
+          >
+            remover
+          </button>
+        )}
+        {onWithdraw && (
+          <button
+            type="button"
+            className="link-button danger"
+            disabled={withdrawing}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Registrar a desistência de "${enrollment.time_nome}"? Todas as partidas restantes da equipe viram W.O. a favor dos adversários.`,
+                )
+              ) {
+                onWithdraw();
+              }
+            }}
+          >
+            desistiu
+          </button>
+        )}
+      </div>
+      <span className="meta">{enrollment.jogadores.map((jogador) => jogador.nome).join(" · ")}</span>
+    </li>
+  );
+}
+
 function AdminsPanel({ championship }: { championship: Championship }) {
   const [email, setEmail] = useState("");
   const queryClient = useQueryClient();
@@ -292,6 +427,128 @@ function AdminsPanel({ championship }: { championship: Championship }) {
   );
 }
 
+function ManageTournamentPanel({ championship }: { championship: Championship }) {
+  const [editando, setEditando] = useState(false);
+  const [nome, setNome] = useState(championship.nome);
+  const [aprovacao, setAprovacao] = useState(championship.aprovacao_inscricoes);
+  const [minInt, setMinInt] = useState(championship.min_integrantes?.toString() ?? "");
+  const [maxInt, setMaxInt] = useState(championship.max_integrantes?.toString() ?? "");
+  const [terceiro, setTerceiro] = useState(championship.disputa_terceiro);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const toast = useToast();
+
+  const temMataMata = championship.formato !== "PONTOS_CORRIDOS";
+  const podeEditar = championship.status === "ABERTO";
+
+  const salvar = useMutation({
+    mutationFn: () =>
+      editarCampeonato(championship.id, nome.trim(), {
+        aprovacaoInscricoes: aprovacao,
+        minIntegrantes: minInt === "" ? null : Number(minInt),
+        maxIntegrantes: maxInt === "" ? null : Number(maxInt),
+        disputaTerceiro: terceiro,
+      }),
+    onSuccess: () => {
+      toast("success", "Torneio atualizado");
+      setEditando(false);
+      queryClient.invalidateQueries({ queryKey: ["championships"] });
+    },
+    onError: (error) => toast("error", (error as Error).message),
+  });
+
+  const cancelar = useMutation({
+    mutationFn: () => cancelarCampeonato(championship.id),
+    onSuccess: () => {
+      toast("success", "Torneio cancelado");
+      queryClient.invalidateQueries({ queryKey: ["championships"] });
+      navigate("/torneios");
+    },
+    onError: (error) => toast("error", (error as Error).message),
+  });
+
+  return (
+    <div className="panel manage-panel">
+      <h2>Gerenciar torneio</h2>
+      {podeEditar && !editando && (
+        <p className="meta">Edite nome, aprovação e limites de equipe enquanto as inscrições estão abertas.</p>
+      )}
+      {!podeEditar && championship.status !== "ENCERRADO" && (
+        <p className="meta">Os dados de criação só podem ser editados com as inscrições abertas.</p>
+      )}
+
+      {podeEditar && editando && (
+        <form
+          className="org-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (nome.trim() !== "") salvar.mutate();
+          }}
+        >
+          <div className="row">
+            <input value={nome} maxLength={100} onChange={(e) => setNome(e.target.value)} aria-label="nome do torneio" />
+          </div>
+          <div className="team-size-row">
+            <label>
+              Mín. integrantes
+              <input type="number" min={1} value={minInt} onChange={(e) => setMinInt(e.target.value)} placeholder="—" />
+            </label>
+            <label>
+              Máx. integrantes
+              <input type="number" min={1} value={maxInt} onChange={(e) => setMaxInt(e.target.value)} placeholder="—" />
+            </label>
+          </div>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={aprovacao} onChange={(e) => setAprovacao(e.target.checked)} />
+            Inscrições de capitães passam pela minha aprovação
+          </label>
+          {temMataMata && (
+            <label className="checkbox-row">
+              <input type="checkbox" checked={terceiro} onChange={(e) => setTerceiro(e.target.checked)} />
+              Disputa de 3º lugar
+            </label>
+          )}
+          <div className="match-actions">
+            <button type="submit" disabled={nome.trim() === "" || salvar.isPending}>
+              {salvar.isPending ? "Salvando…" : "Salvar alterações"}
+            </button>
+            <button type="button" className="ghost" onClick={() => setEditando(false)}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {podeEditar && !editando && (
+        <div className="match-actions">
+          <button type="button" className="ghost" onClick={() => setEditando(true)}>
+            ✎ Editar torneio
+          </button>
+        </div>
+      )}
+
+      {championship.is_dono && (
+        <button
+          type="button"
+          className="link-button danger"
+          disabled={cancelar.isPending}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Cancelar o torneio "${championship.nome}"? Isso é definitivo e apaga as partidas e a classificação. Não dá para desfazer.`,
+              )
+            ) {
+              cancelar.mutate();
+            }
+          }}
+        >
+          cancelar torneio (definitivo)
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function TournamentDetailPage() {
   const { championshipId } = useParams<{ championshipId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -333,6 +590,15 @@ export function TournamentDetailPage() {
     onSuccess: () => {
       toast("success", "Inscrição removida");
       refreshEnrollments();
+    },
+    onError: (error) => toast("error", (error as Error).message),
+  });
+  const desistir = useMutation({
+    mutationFn: (teamId: string) => desistirTime(championshipId!, teamId),
+    onSuccess: (resultado) => {
+      toast("success", `Desistência registrada — W.O. em ${resultado.walkovers} partida(s)`);
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+      queryClient.invalidateQueries({ queryKey: ["championships"] });
     },
     onError: (error) => toast("error", (error as Error).message),
   });
@@ -382,8 +648,17 @@ export function TournamentDetailPage() {
     enabled: championshipId !== undefined && temChaveamento && championship !== undefined && championship.status !== "ABERTO",
   });
 
+  // conflitos de horário (mesmo time em dois jogos) — só interessa a quem gerencia
+  const { data: conflitos = [] } = useQuery({
+    queryKey: ["conflitos", championshipId],
+    queryFn: () => fetchConflitos(championshipId!),
+    enabled: championshipId !== undefined && canManage,
+  });
+
+  const emOperacao = canManage && championship?.status === "EM_ANDAMENTO";
   const tabs = [
     { id: "visao", label: "Visão geral" },
+    ...(emOperacao ? [{ id: "operacao", label: "● Operação do dia" }] : []),
     { id: "partidas", label: "Partidas" },
     ...(temClassificacao ? [{ id: "classificacao", label: "Classificação" }] : []),
     ...(temChaveamento ? [{ id: "chaveamento", label: "Chaveamento" }] : []),
@@ -394,13 +669,14 @@ export function TournamentDetailPage() {
           ? `Times (${pendentesDeAprovacao.length})`
           : "Times",
     },
-    { id: "jogadores", label: "Jogadores" },
+    { id: "jogadores", label: "Participantes" },
+    ...(canManage ? [{ id: "gestao", label: "Gestão" }] : []),
   ];
 
   const activeTab = tabs.find((tab) => tab.id === searchParams.get("tab"))?.id ?? "visao";
 
-  const setTab = (tab: string) => {
-    setSearchParams(tab === "visao" ? {} : { tab }, { replace: true });
+  const setTab = (tab: string, extra?: Record<string, string>) => {
+    setSearchParams(tab === "visao" && !extra ? {} : { tab, ...extra }, { replace: true });
   };
 
   if (loadingChampionships) {
@@ -422,6 +698,29 @@ export function TournamentDetailPage() {
     );
   }
 
+  if (championship.status === "CANCELADO") {
+    return (
+      <>
+        <p className="breadcrumb">
+          <Link to="/torneios">← Torneios</Link>
+        </p>
+        <div className="page-header">
+          <div className="page-title-row">
+            <h2 className="page-title">{championship.nome}</h2>
+            <span className="badge championship-cancelado">Cancelado</span>
+          </div>
+        </div>
+        <div className="panel">
+          <p className="prose">
+            Este torneio foi <strong>cancelado</strong> pelo organizador. As partidas e a classificação foram
+            removidas. Se precisar, crie um novo torneio a partir de{" "}
+            <Link to="/torneios/novo">Novo torneio</Link>.
+          </p>
+        </div>
+      </>
+    );
+  }
+
   const confirmedTeams = enrollments
     .filter((enrollment) => enrollment.status === "CONFIRMADA")
     .map((enrollment) => ({ team_id: enrollment.time_id, name: enrollment.time_nome }));
@@ -429,12 +728,15 @@ export function TournamentDetailPage() {
   const upcoming = matches.filter((match) => match.status === "AGENDADA");
   const finished = matches.filter((match) => match.status === "FINALIZADA");
 
-  // contexto da fase em cada card ("Grupo B", "Semifinais"…)
+  // contexto da fase em cada card ("Grupo B · Rodada 2", "Semifinais"…)
   const totalRounds = totalRoundsDoFormato(championship.formato, Math.max(confirmedTeams.length, 2));
   const phaseLabels = new Map<string, string>();
   for (const match of matches) {
-    if (match.group_id && groups.length > 1) {
-      phaseLabels.set(match.match_id, groupLabels.get(match.group_id) ?? "Grupo");
+    if (match.group_id) {
+      const grupo = groups.length > 1 ? groupLabels.get(match.group_id) ?? "Grupo" : "";
+      const rodada = match.round !== null ? `Rodada ${match.round}` : "";
+      const label = [grupo, rodada].filter(Boolean).join(" · ");
+      if (label) phaseLabels.set(match.match_id, label);
     } else if (match.stage === "PLAYOFF" && match.round !== null) {
       phaseLabels.set(match.match_id, nomeDaRodada(match.round, totalRounds));
     }
@@ -468,6 +770,25 @@ export function TournamentDetailPage() {
             {CHAMPIONSHIP_STATUS_LABEL[championship.status]}
           </span>
           <ShareButton championship={championship} />
+          {canManage && (
+            <a
+              className="ghost share-button"
+              href={`/torneios/${championship.id}/telao`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abrir o painel de parede para projetar numa TV do ginásio"
+            >
+              📺 Abrir telão
+            </a>
+          )}
+          {championship.status !== "ABERTO" && (
+            <ExportButton
+              championship={championship}
+              matches={matches}
+              enrollments={enrollments}
+              groupLabels={groupLabels}
+            />
+          )}
         </div>
         <p className="subtitle">
           {FORMAT_LABEL[championship.formato]} · criado em {formatDate(championship.created_at)} ·{" "}
@@ -482,6 +803,18 @@ export function TournamentDetailPage() {
         <div className="champion-banner">
           🏆 Campeão: <strong>{championship.campeao_nome}</strong>
         </div>
+      )}
+
+      {canManage && (
+        <AttentionPanel
+          status={championship.status}
+          aprovacoesPendentes={championship.aprovacao_inscricoes ? pendentesDeAprovacao.length : 0}
+          aguardandoApuracao={upcoming}
+          aoVivo={live}
+          semHorario={upcoming.filter((match) => match.scheduled_at === null).length}
+          conflitos={conflitos}
+          onIr={setTab}
+        />
       )}
 
       {canManage && (
@@ -573,8 +906,36 @@ export function TournamentDetailPage() {
         </>
       )}
 
+      {activeTab === "operacao" && emOperacao && (
+        <>
+          <ScheduleTools championshipId={championship.id} conflitos={conflitos} />
+          <section className="panel">
+            <h2>● Ao vivo agora</h2>
+            <MatchList
+              matches={live}
+              phaseLabels={phaseLabels}
+              emptyMessage="Nenhuma partida em andamento — inicie a próxima abaixo."
+            />
+          </section>
+          <section className="panel">
+            <h2>A seguir</h2>
+            <p className="meta">
+              Partidas agendadas em ordem de horário — inicie, aponte o placar e encerre sem sair desta tela.
+            </p>
+            <MatchList
+              matches={upcoming}
+              phaseLabels={phaseLabels}
+              emptyMessage="Nenhuma partida pendente — tudo apurado! 🎉"
+            />
+          </section>
+        </>
+      )}
+
       {activeTab === "partidas" && (
         <>
+          {canManage && championship.status !== "ABERTO" && championship.status !== "ENCERRADO" && (
+            <ScheduleTools championshipId={championship.id} conflitos={conflitos} />
+          )}
           {canManage && matches.length > 0 && (
             <div className="tabs sub" role="tablist">
               <button
@@ -622,8 +983,24 @@ export function TournamentDetailPage() {
             const secoes: { titulo: string; itens: Match[] }[] = [];
 
             for (const groupId of groups) {
-              const itens = visiveis.filter((match) => match.group_id === groupId);
-              if (itens.length > 0) secoes.push({ titulo: groupLabels.get(groupId) ?? "Grupo", itens });
+              const itensGrupo = visiveis.filter((match) => match.group_id === groupId);
+              if (itensGrupo.length === 0) continue;
+              const prefixo = groups.length > 1 ? `${groupLabels.get(groupId) ?? "Grupo"} · ` : "";
+              const rodadasGrupo = [
+                ...new Set(itensGrupo.map((m) => m.round).filter((r): r is number => r !== null)),
+              ].sort((a, b) => a - b);
+              if (rodadasGrupo.length > 0) {
+                for (const rodada of rodadasGrupo) {
+                  secoes.push({
+                    titulo: `${prefixo}Rodada ${rodada}`,
+                    itens: itensGrupo.filter((m) => m.round === rodada),
+                  });
+                }
+                const semRodada = itensGrupo.filter((m) => m.round === null);
+                if (semRodada.length > 0) secoes.push({ titulo: `${prefixo}Demais jogos`, itens: semRodada });
+              } else {
+                secoes.push({ titulo: groupLabels.get(groupId) ?? "Grupo", itens: itensGrupo });
+              }
             }
             const rodadas = [
               ...new Set(
@@ -709,13 +1086,15 @@ export function TournamentDetailPage() {
 
       {activeTab === "jogadores" && (
         <section className="panel">
-          <h2>Jogadores do torneio</h2>
-          {enrollments.length === 0 && <p className="empty">Nenhum jogador ainda — os times aparecem primeiro.</p>}
+          <h2>Participantes do torneio</h2>
+          {enrollments.length === 0 && (
+            <p className="empty">Nenhum participante ainda — as equipes aparecem primeiro.</p>
+          )}
           {enrollments.length > 0 && (
             <table>
               <thead>
                 <tr>
-                  <th className="left">Jogador</th>
+                  <th className="left">Participante</th>
                   <th className="left">Time</th>
                 </tr>
               </thead>
@@ -732,6 +1111,13 @@ export function TournamentDetailPage() {
             </table>
           )}
         </section>
+      )}
+
+      {activeTab === "gestao" && canManage && (
+        <>
+          <ManageTournamentPanel championship={championship} />
+          <ManagementLog championshipId={championship.id} />
+        </>
       )}
 
       {activeTab === "times" && (
@@ -875,45 +1261,22 @@ export function TournamentDetailPage() {
             )}
             <ul className="enrollments">
               {enrollments.map((enrollment) => (
-                <li key={enrollment.inscricao_id} className={myTeam?.teamId === enrollment.time_id ? "my-team" : ""}>
-                  <div className="enrollment-header">
-                    <strong>
-                      <button
-                        type="button"
-                        className="star-button"
-                        title={
-                          myTeam?.teamId === enrollment.time_id
-                            ? "Deixar de seguir este time"
-                            : "Marcar como meu time"
-                        }
-                        onClick={() =>
-                          toggleMyTeam(championship.id, { teamId: enrollment.time_id, name: enrollment.time_nome })
-                        }
-                      >
-                        {myTeam?.teamId === enrollment.time_id ? "★" : "☆"}
-                      </button>
-                      {enrollment.time_nome}
-                    </strong>
-                    <span className={`badge ${enrollment.status.toLowerCase()}`}>
-                      {statusDaInscricao(enrollment)}
-                    </span>
-                    {canManage && championship.status === "ABERTO" && (
-                      <button
-                        type="button"
-                        className="link-button"
-                        disabled={remover.isPending}
-                        onClick={() => {
-                          if (window.confirm(`Remover "${enrollment.time_nome}" do torneio?`)) {
-                            remover.mutate(enrollment.inscricao_id);
-                          }
-                        }}
-                      >
-                        remover
-                      </button>
-                    )}
-                  </div>
-                  <span className="meta">{enrollment.jogadores.map((jogador) => jogador.nome).join(" · ")}</span>
-                </li>
+                <EnrollmentItem
+                  key={enrollment.inscricao_id}
+                  enrollment={enrollment}
+                  championship={championship}
+                  canManage={canManage}
+                  isMyTeam={myTeam?.teamId === enrollment.time_id}
+                  statusTexto={statusDaInscricao(enrollment)}
+                  onRemove={() => remover.mutate(enrollment.inscricao_id)}
+                  removing={remover.isPending}
+                  onWithdraw={
+                    canManage && championship.status === "EM_ANDAMENTO" && enrollment.status === "CONFIRMADA"
+                      ? () => desistir.mutate(enrollment.time_id)
+                      : undefined
+                  }
+                  withdrawing={desistir.isPending}
+                />
               ))}
             </ul>
           </section>

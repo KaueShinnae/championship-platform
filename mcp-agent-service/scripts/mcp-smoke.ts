@@ -1,10 +1,3 @@
-/**
- * Smoke test do servidor MCP de ponta a ponta: sobe o servidor via stdio
- * (como o Claude Desktop/Code faria), lista as tools e as invoca contra os
- * servicos reais (ranking-service:8083, partidas-service:8082).
- *
- * Uso: npx tsx scripts/mcp-smoke.ts <group_id> <match_id>
- */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 

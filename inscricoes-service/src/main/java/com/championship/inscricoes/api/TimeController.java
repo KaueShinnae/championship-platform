@@ -42,28 +42,33 @@ public class TimeController {
                 .toList();
     }
 
-    /** Aprovação de inscrição de capitão (dono/admin) — dispara a saga de confirmação. */
+    @PutMapping("/{inscricaoId}")
+    public InscricaoDetalheResponse editar(@PathVariable UUID campeonatoId, @PathVariable UUID inscricaoId,
+                                            @Valid @RequestBody InscreverTimeRequest request,
+                                            HttpServletRequest http) {
+        Inscricao inscricao = inscricaoService.editarTime(
+                campeonatoId, inscricaoId, request.nome(), request.jogadores(), authTokens.sessao(http));
+        return InscricaoDetalheResponse.from(inscricao);
+    }
+
     @PostMapping("/{inscricaoId}/aprovar")
     public InscricaoResponse aprovar(@PathVariable UUID campeonatoId, @PathVariable UUID inscricaoId,
                                       HttpServletRequest http) {
-        UUID usuarioId = authTokens.exigirUsuario(http);
-        return InscricaoResponse.from(inscricaoService.aprovarInscricao(campeonatoId, inscricaoId, usuarioId));
+        return InscricaoResponse.from(
+                inscricaoService.aprovarInscricao(campeonatoId, inscricaoId, authTokens.sessao(http)));
     }
 
-    /** Recusa de inscrição de capitão (dono/admin) — o capitão pode tentar de novo. */
     @PostMapping("/{inscricaoId}/recusar")
     public InscricaoResponse recusar(@PathVariable UUID campeonatoId, @PathVariable UUID inscricaoId,
                                       HttpServletRequest http) {
-        UUID usuarioId = authTokens.exigirUsuario(http);
-        return InscricaoResponse.from(inscricaoService.recusarInscricao(campeonatoId, inscricaoId, usuarioId));
+        return InscricaoResponse.from(
+                inscricaoService.recusarInscricao(campeonatoId, inscricaoId, authTokens.sessao(http)));
     }
 
-    /** Gestor remove time (inscrições abertas) ou capitão cancela a própria PENDENTE. */
     @DeleteMapping("/{inscricaoId}")
     public ResponseEntity<Void> remover(@PathVariable UUID campeonatoId, @PathVariable UUID inscricaoId,
                                          HttpServletRequest http) {
-        UUID usuarioId = authTokens.exigirUsuario(http);
-        inscricaoService.removerInscricao(campeonatoId, inscricaoId, usuarioId);
+        inscricaoService.removerInscricao(campeonatoId, inscricaoId, authTokens.sessao(http));
         return ResponseEntity.noContent().build();
     }
 }

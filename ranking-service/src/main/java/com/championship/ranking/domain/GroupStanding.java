@@ -5,10 +5,6 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Read model CQRS (SPEC.md §3): populado só por eventos consumidos do
- * Kafka, nunca por escrita direta via API. Uma linha por (group_id, team_id).
- */
 @Entity
 @Table(name = "group_standing", uniqueConstraints = @UniqueConstraint(columnNames = {"group_id", "team_id"}))
 public class GroupStanding {
@@ -65,25 +61,48 @@ public class GroupStanding {
         return new GroupStanding(UUID.randomUUID(), campeonatoId, groupId, teamId, teamName, Instant.now());
     }
 
-    /**
-     * Aplica o resultado de uma partida do ponto de vista deste time.
-     * Vitória = 3 pontos, empate = 1 ponto, derrota = 0 (docs/events/match.finished.v1.md).
-     */
-    public void aplicarResultado(int golsPro, int golsContra) {
-        if (golsPro < 0 || golsContra < 0) {
+    public void aplicarResultado(int pontosPro, int pontosContra) {
+        aplicarResultado(pontosPro, pontosContra, false);
+    }
+
+    public void aplicarResultado(int pontosPro, int pontosContra, boolean wo) {
+        if (pontosPro < 0 || pontosContra < 0) {
             throw new IllegalArgumentException("placar nao pode ser negativo");
         }
-        if (golsPro > golsContra) {
+        if (pontosPro > pontosContra) {
             this.wins++;
             this.points += 3;
-        } else if (golsPro == golsContra) {
+        } else if (pontosPro == pontosContra) {
             this.draws++;
             this.points += 1;
         } else {
             this.losses++;
         }
-        this.goalsFor += golsPro;
-        this.goalsAgainst += golsContra;
+        if (!wo) {
+            this.goalsFor += pontosPro;
+            this.goalsAgainst += pontosContra;
+        }
+        this.updatedAt = Instant.now();
+    }
+
+    public void reverterResultado(int pontosPro, int pontosContra) {
+        reverterResultado(pontosPro, pontosContra, false);
+    }
+
+    public void reverterResultado(int pontosPro, int pontosContra, boolean wo) {
+        if (pontosPro > pontosContra) {
+            this.wins--;
+            this.points -= 3;
+        } else if (pontosPro == pontosContra) {
+            this.draws--;
+            this.points -= 1;
+        } else {
+            this.losses--;
+        }
+        if (!wo) {
+            this.goalsFor -= pontosPro;
+            this.goalsAgainst -= pontosContra;
+        }
         this.updatedAt = Instant.now();
     }
 

@@ -73,6 +73,23 @@ class PartidaTest {
     }
 
     @Test
+    void agendaComLocalEReagendaMantemLocal() {
+        Partida partida = Partida.agendar(campeonatoId, null, homeTeamId, "Timaço FC", awayTeamId, "Rival FC",
+                Instant.parse("2026-07-20T19:30:00Z"), "Quadra 1");
+        assertThat(partida.getLocal()).isEqualTo("Quadra 1");
+
+        // reagendar sem informar local (overload de 1 arg) preserva o local atual
+        partida.reagendar(Instant.parse("2026-07-22T20:00:00Z"));
+        assertThat(partida.getLocal()).isEqualTo("Quadra 1");
+
+        // reagendar informando novo local o troca; em branco vira "a definir" (null)
+        partida.reagendar(Instant.parse("2026-07-22T20:00:00Z"), "Ginásio Central");
+        assertThat(partida.getLocal()).isEqualTo("Ginásio Central");
+        partida.reagendar(Instant.parse("2026-07-22T20:00:00Z"), "   ");
+        assertThat(partida.getLocal()).isNull();
+    }
+
+    @Test
     void iniciarColocaEmAndamento() {
         Partida partida = agendada();
 
@@ -161,5 +178,50 @@ class PartidaTest {
 
         assertThatThrownBy(() -> partida.registrarResultado(-1, 0))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void marcaResultadoComoWo() {
+        Partida partida = agendada();
+        partida.iniciar();
+
+        partida.registrarResultado(1, 0, true, "adversário não compareceu");
+
+        assertThat(partida.isWo()).isTrue();
+        assertThat(partida.getWoMotivo()).isEqualTo("adversário não compareceu");
+        assertThat(partida.getStatus()).isEqualTo(PartidaStatus.FINALIZADA);
+    }
+
+    @Test
+    void corrigeResultadoJaRegistrado() {
+        Partida partida = agendada();
+        partida.iniciar();
+        partida.registrarResultado(3, 1);
+
+        partida.corrigirResultado(1, 3);
+
+        assertThat(partida.getHomeScore()).isEqualTo(1);
+        assertThat(partida.getAwayScore()).isEqualTo(3);
+        assertThat(partida.getStatus()).isEqualTo(PartidaStatus.FINALIZADA);
+    }
+
+    @Test
+    void naoCorrigeResultadoAindaNaoRegistrado() {
+        Partida partida = agendada();
+        partida.iniciar();
+
+        assertThatThrownBy(() -> partida.corrigirResultado(1, 0))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void substituiTimeDePartidaAgendada() {
+        Partida partida = agendada();
+        UUID novo = UUID.randomUUID();
+
+        partida.substituirTime(true, novo, "Novo FC");
+
+        assertThat(partida.getHomeTeamId()).isEqualTo(novo);
+        assertThat(partida.getHomeTeamName()).isEqualTo("Novo FC");
     }
 }

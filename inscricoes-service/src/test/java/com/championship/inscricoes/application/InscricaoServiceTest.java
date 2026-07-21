@@ -11,9 +11,11 @@ import com.championship.inscricoes.infrastructure.messaging.events.ChampionshipP
 import com.championship.inscricoes.infrastructure.messaging.events.TeamRegisteredPayload;
 import com.championship.inscricoes.infrastructure.persistence.CampeonatoAdminRepository;
 import com.championship.inscricoes.infrastructure.persistence.CampeonatoRepository;
+import com.championship.inscricoes.infrastructure.persistence.GestaoLogRepository;
 import com.championship.inscricoes.infrastructure.persistence.InscricaoRepository;
 import com.championship.inscricoes.infrastructure.persistence.TimeRepository;
 import com.championship.inscricoes.infrastructure.persistence.UsuarioRepository;
+import com.championship.inscricoes.infrastructure.security.AuthTokens.Sessao;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -53,8 +55,15 @@ class InscricaoServiceTest {
     @Mock
     private UsuarioRepository usuarioRepository;
 
+    @Mock
+    private GestaoLogRepository gestaoLogRepository;
+
     @InjectMocks
     private InscricaoService inscricaoService;
+
+    private static Sessao ator(UUID id) {
+        return new Sessao(id, "Fulano");
+    }
 
     private Campeonato campeonatoComDono(UUID donoId) {
         Campeonato campeonato = Campeonato.criar("Copa Verão 2026", CampeonatoFormato.PONTOS_CORRIDOS, donoId);
@@ -209,7 +218,7 @@ class InscricaoServiceTest {
         inscricao.confirmar();
         when(inscricaoRepository.findById(inscricao.getId())).thenReturn(Optional.of(inscricao));
 
-        inscricaoService.removerInscricao(campeonato.getId(), inscricao.getId(), donoId);
+        inscricaoService.removerInscricao(campeonato.getId(), inscricao.getId(), ator(donoId));
 
         verify(inscricaoRepository).delete(inscricao);
         verify(timeRepository).delete(time);
@@ -224,7 +233,7 @@ class InscricaoServiceTest {
         Inscricao inscricao = Inscricao.pendenteDeCapitao(time, campeonato, UUID.randomUUID());
         when(inscricaoRepository.findById(inscricao.getId())).thenReturn(Optional.of(inscricao));
 
-        assertThatThrownBy(() -> inscricaoService.removerInscricao(campeonato.getId(), inscricao.getId(), donoId))
+        assertThatThrownBy(() -> inscricaoService.removerInscricao(campeonato.getId(), inscricao.getId(), ator(donoId)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("inscricoes abertas");
     }
@@ -250,7 +259,7 @@ class InscricaoServiceTest {
         Inscricao inscricao = Inscricao.pendenteDeCapitao(time, campeonato, UUID.randomUUID());
         when(inscricaoRepository.findById(inscricao.getId())).thenReturn(Optional.of(inscricao));
 
-        inscricaoService.aprovarInscricao(campeonato.getId(), inscricao.getId(), donoId);
+        inscricaoService.aprovarInscricao(campeonato.getId(), inscricao.getId(), ator(donoId));
 
         verify(domainEventWriter).write(eq(time.getId()), eq(TeamRegisteredPayload.TYPE), any());
     }
@@ -264,7 +273,7 @@ class InscricaoServiceTest {
         when(inscricaoRepository.findById(inscricao.getId())).thenReturn(Optional.of(inscricao));
         when(inscricaoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Inscricao recusada = inscricaoService.recusarInscricao(campeonato.getId(), inscricao.getId(), donoId);
+        Inscricao recusada = inscricaoService.recusarInscricao(campeonato.getId(), inscricao.getId(), ator(donoId));
 
         assertThat(recusada.getStatus()).isEqualTo(InscricaoStatus.RECUSADA);
         verify(domainEventWriter, never()).write(any(), eq(TeamRegisteredPayload.TYPE), any());
@@ -280,7 +289,7 @@ class InscricaoServiceTest {
         when(inscricaoRepository.findById(inscricao.getId())).thenReturn(Optional.of(inscricao));
         when(campeonatoAdminRepository.existsById(any())).thenReturn(false);
 
-        inscricaoService.removerInscricao(campeonato.getId(), inscricao.getId(), capitao);
+        inscricaoService.removerInscricao(campeonato.getId(), inscricao.getId(), ator(capitao));
 
         verify(inscricaoRepository).delete(inscricao);
         verify(timeRepository).delete(time);
@@ -297,7 +306,7 @@ class InscricaoServiceTest {
         when(campeonatoAdminRepository.existsById(any())).thenReturn(false);
 
         assertThatThrownBy(() -> inscricaoService.removerInscricao(
-                        campeonato.getId(), inscricao.getId(), UUID.randomUUID()))
+                        campeonato.getId(), inscricao.getId(), ator(UUID.randomUUID())))
                 .isInstanceOf(SemPermissaoException.class);
     }
 

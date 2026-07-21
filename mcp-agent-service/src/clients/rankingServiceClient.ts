@@ -15,11 +15,6 @@ export interface GroupStandings {
   standings: StandingEntry[];
 }
 
-/**
- * Le a projecao de classificacao do ranking-service (read model CQRS).
- * Endpoint alvo: GET /groups/{groupId}/standings — a implementar no
- * ranking-service (ROADMAP.md Semana 2/3).
- */
 export async function fetchGroupStandings(groupId: string): Promise<GroupStandings | null> {
   const response = await fetch(`${config.rankingServiceUrl}/groups/${groupId}/standings`);
   if (response.status === 404) {

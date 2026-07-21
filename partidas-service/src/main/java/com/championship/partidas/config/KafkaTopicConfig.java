@@ -2,6 +2,7 @@ package com.championship.partidas.config;
 
 import com.championship.partidas.infrastructure.messaging.events.ChampionshipCompletedPayload;
 import com.championship.partidas.infrastructure.messaging.events.MatchFinishedPayload;
+import com.championship.partidas.infrastructure.messaging.events.MatchResultCorrectedPayload;
 import com.championship.partidas.infrastructure.messaging.events.MatchScheduledPayload;
 import com.championship.partidas.infrastructure.messaging.events.MatchStartedPayload;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -30,5 +31,10 @@ public class KafkaTopicConfig {
     @Bean
     public NewTopic championshipCompletedTopic() {
         return TopicBuilder.name(ChampionshipCompletedPayload.TYPE).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic matchResultCorrectedTopic() {
+        return TopicBuilder.name(MatchResultCorrectedPayload.TYPE).partitions(3).replicas(1).build();
     }
 }

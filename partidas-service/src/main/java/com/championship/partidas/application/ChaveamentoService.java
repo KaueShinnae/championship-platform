@@ -24,7 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -34,13 +33,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * Geração de confrontos e avanço automático de fase (ver especificação de
- * formatos). A classificação dos grupos é calculada aqui, a partir dos
- * resultados que este serviço já possui — nunca há chamada síncrona ao
- * ranking-service (CLAUDE.md "o que não fazer"); o ranking segue sendo o
- * read model de exibição, alimentado por match.finished.v1.
- */
 @Service
 public class ChaveamentoService {
 
@@ -64,13 +56,13 @@ public class ChaveamentoService {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * Sorteia os times e gera todas as partidas da(s) primeira(s) fase(s).
-     * Re-sortear é permitido enquanto nenhuma partida tiver sido iniciada:
-     * descarta tudo e regenera.
-     */
     @Transactional
     public List<Partida> gerar(UUID campeonatoId, FormatoTorneio formato, List<TeamRef> times) {
+        return gerar(campeonatoId, formato, times, false);
+    }
+
+    public List<Partida> gerar(UUID campeonatoId, FormatoTorneio formato, List<TeamRef> times,
+                                boolean disputaTerceiro) {
         validarTimes(formato, times);
         descartarSorteio(campeonatoId);
 
@@ -127,26 +119,19 @@ public class ChaveamentoService {
         chaveamentoRepository.save(new TorneioChaveamento(
                 campeonatoId, formato, totalRounds,
                 json(sorteados.stream().map(time -> time.teamId().toString()).toList()),
-                groupIds == null ? null : json(groupIds.stream().map(UUID::toString).toList())));
+                groupIds == null ? null : json(groupIds.stream().map(UUID::toString).toList()),
+                disputaTerceiro && formato != FormatoTorneio.PONTOS_CORRIDOS));
 
         log.info("confrontos gerados campeonatoId={} formato={} times={} partidas={}",
                 campeonatoId, formato, times.size(), criadas.size());
         return criadas;
     }
 
-    /**
-     * Slots ocupados do bracket (times que já entraram numa rodada, incluindo
-     * byes) — usado pelo dashboard para mostrar quem avançou direto.
-     */
     @Transactional(readOnly = true)
     public List<ChaveSlot> listarSlots(UUID campeonatoId) {
         return chaveSlotRepository.findByIdCampeonatoId(campeonatoId);
     }
 
-    /**
-     * Descarta o sorteio (re-sortear / reabrir inscrições). Bloqueado se
-     * alguma partida do campeonato já saiu de AGENDADA.
-     */
     @Transactional
     public void descartarSorteio(UUID campeonatoId) {
         List<Partida> existentes = partidaRepository.findByCampeonatoId(campeonatoId);
@@ -160,12 +145,6 @@ public class ChaveamentoService {
         chaveamentoRepository.deleteById(campeonatoId);
     }
 
-    /**
-     * Avanço automático de fase, chamado na mesma transação do registro de
-     * resultado: vencedor de mata-mata ocupa o slot da rodada seguinte; fim
-     * da fase de grupos semeia os playoffs; e o campeão encerra o torneio
-     * via championship.completed.v1 (outbox).
-     */
     @Transactional
     public void aoFinalizar(Partida partida) {
         Optional<TorneioChaveamento> configuracao = chaveamentoRepository.findById(partida.getCampeonatoId());
@@ -175,12 +154,16 @@ public class ChaveamentoService {
         TorneioChaveamento config = configuracao.get();
 
         if (partida.getStage() == PartidaStage.PLAYOFF) {
+            if (partida.isTerceiroLugar()) {
+                return; // disputa de 3º lugar é terminal: não avança nem coroa campeão
+            }
             TeamRef vencedor = new TeamRef(partida.vencedorId(), partida.vencedorNome());
             if (partida.getRound().equals(config.getTotalRounds())) {
                 encerrarCampeonato(partida.getCampeonatoId(), vencedor);
             } else {
                 ocuparSlot(partida.getCampeonatoId(), partida.getRound() + 1, partida.getBracketPos(),
                         vencedor, new ArrayList<>());
+                criarDisputaTerceiroSePronta(partida, config);
             }
             return;
         }
@@ -195,8 +178,8 @@ public class ChaveamentoService {
         }
 
         if (config.getFormato() == FormatoTorneio.PONTOS_CORRIDOS) {
-            TeamRef campeao = classificar(deGrupos, ordemDoSorteio(config)).get(0);
-            encerrarCampeonato(partida.getCampeonatoId(), campeao);
+            StandingsService.TeamStanding lider = StandingsService.ordenar(deGrupos, ordemDoSorteio(config)).get(0);
+            encerrarCampeonato(partida.getCampeonatoId(), new TeamRef(lider.teamId(), lider.teamName()));
         } else if (config.getFormato() == FormatoTorneio.GRUPOS_PLAYOFFS) {
             boolean playoffsJaSemeados = doCampeonato.stream()
                     .anyMatch(p -> p.getStage() == PartidaStage.PLAYOFF);
@@ -206,13 +189,122 @@ public class ChaveamentoService {
         }
     }
 
+    // ---- correção de resultado registrado (item de gestão) ----
+
+    @Transactional(readOnly = true)
+    public void validarCorrecao(Partida partida, int novoHome, int novoAway) {
+        Optional<TorneioChaveamento> configuracao = chaveamentoRepository.findById(partida.getCampeonatoId());
+        if (configuracao.isEmpty()) {
+            return; // campeonato legado sem sorteio: correção livre
+        }
+        TorneioChaveamento config = configuracao.get();
+        List<Partida> doCampeonato = partidaRepository.findByCampeonatoId(partida.getCampeonatoId());
+
+        if (partida.getStage() == PartidaStage.PLAYOFF) {
+            UUID vencedorAtual = partida.vencedorId();
+            UUID novoVencedor = novoHome > novoAway ? partida.getHomeTeamId() : partida.getAwayTeamId();
+            if (vencedorAtual.equals(novoVencedor)) {
+                return; // vencedor não muda: correção cosmética, sempre segura
+            }
+            if (partida.getRound().equals(config.getTotalRounds())) {
+                throw new IllegalStateException(
+                        "esta é a final e o campeão já foi definido — para trocar o vencedor da final, "
+                                + "recrie o torneio (correção da final não é suportada)");
+            }
+            proximaPartida(doCampeonato, partida).ifPresent(proxima -> {
+                if (proxima.getStatus() != PartidaStatus.AGENDADA) {
+                    throw new IllegalStateException(
+                            "o próximo jogo do vencedor (" + proxima.getHomeTeamName() + " x "
+                                    + proxima.getAwayTeamName() + ") já começou — não é possível trocar quem avançou");
+                }
+            });
+            return;
+        }
+
+        // fase de grupos / pontos corridos
+        boolean playoffsSemeados = doCampeonato.stream().anyMatch(p -> p.getStage() == PartidaStage.PLAYOFF);
+        if (config.getFormato() == FormatoTorneio.GRUPOS_PLAYOFFS && playoffsSemeados) {
+            throw new IllegalStateException(
+                    "a fase de grupos já foi encerrada e o mata-mata sorteado — não é possível corrigir resultados de grupo");
+        }
+        if (config.getFormato() == FormatoTorneio.PONTOS_CORRIDOS) {
+            boolean todasFinalizadas = doCampeonato.stream()
+                    .filter(p -> p.getStage() == PartidaStage.GRUPOS)
+                    .allMatch(p -> p.getStatus() == PartidaStatus.FINALIZADA);
+            if (todasFinalizadas) {
+                throw new IllegalStateException(
+                        "o torneio já foi encerrado com campeão — não é possível corrigir o resultado");
+            }
+        }
+    }
+
+    @Transactional
+    public void repropagarVencedor(Partida partida, UUID vencedorAntigoId) {
+        if (partida.getStage() != PartidaStage.PLAYOFF) {
+            return;
+        }
+        if (partida.vencedorId().equals(vencedorAntigoId)) {
+            return; // vencedor não mudou
+        }
+        int proximaRodada = partida.getRound() + 1;
+        int slot = partida.getBracketPos();
+        TeamRef novoVencedor = new TeamRef(partida.vencedorId(), partida.vencedorNome());
+
+        chaveSlotRepository.save(new ChaveSlot(
+                partida.getCampeonatoId(), proximaRodada, slot, novoVencedor.teamId(), novoVencedor.name()));
+
+        List<Partida> doCampeonato = partidaRepository.findByCampeonatoId(partida.getCampeonatoId());
+        proximaPartida(doCampeonato, partida).ifPresent(proxima -> {
+            boolean casa = slot % 2 == 0; // slot par alimenta o time da casa
+            proxima.substituirTime(casa, novoVencedor.teamId(), novoVencedor.name());
+            partidaRepository.save(proxima);
+            publicarAgendada(proxima);
+            log.info("bracket repropagado apos correcao campeonatoId={} rodada={} novoVencedor={}",
+                    partida.getCampeonatoId(), proximaRodada, novoVencedor.name());
+        });
+    }
+
+    private void criarDisputaTerceiroSePronta(Partida semifinal, TorneioChaveamento config) {
+        if (!config.isDisputaTerceiro() || config.getTotalRounds() == null) {
+            return;
+        }
+        int rodadaSemis = config.getTotalRounds() - 1;
+        if (semifinal.getRound() == null || semifinal.getRound() != rodadaSemis) {
+            return;
+        }
+        List<Partida> doCampeonato = partidaRepository.findByCampeonatoId(semifinal.getCampeonatoId());
+        List<Partida> semis = doCampeonato.stream()
+                .filter(p -> p.getStage() == PartidaStage.PLAYOFF && !p.isTerceiroLugar())
+                .filter(p -> p.getRound() != null && p.getRound() == rodadaSemis)
+                .toList();
+        boolean todasFinalizadas = semis.size() == 2
+                && semis.stream().allMatch(p -> p.getStatus() == PartidaStatus.FINALIZADA);
+        boolean jaExiste = doCampeonato.stream().anyMatch(Partida::isTerceiroLugar);
+        if (!todasFinalizadas || jaExiste) {
+            return;
+        }
+        Partida a = semis.get(0);
+        Partida b = semis.get(1);
+        Partida terceiro = partidaRepository.save(Partida.deTerceiroLugar(
+                semifinal.getCampeonatoId(), config.getTotalRounds(),
+                a.perdedorId(), a.perdedorNome(), b.perdedorId(), b.perdedorNome()));
+        publicarAgendada(terceiro);
+        log.info("disputa de 3o lugar criada campeonatoId={} {} x {}",
+                semifinal.getCampeonatoId(), a.perdedorNome(), b.perdedorNome());
+    }
+
+    private Optional<Partida> proximaPartida(List<Partida> doCampeonato, Partida partida) {
+        int proximaRodada = partida.getRound() + 1;
+        int proximoBracketPos = partida.getBracketPos() / 2;
+        return doCampeonato.stream()
+                .filter(p -> p.getStage() == PartidaStage.PLAYOFF)
+                .filter(p -> p.getRound() != null && p.getRound() == proximaRodada)
+                .filter(p -> p.getBracketPos() != null && p.getBracketPos() == proximoBracketPos)
+                .findFirst();
+    }
+
     // ---- semeadura dos playoffs a partir dos grupos ----
 
-    /**
-     * Seeding cruzado pareando grupos vizinhos: com grupos (X, Y), a metade de
-     * cima do bracket recebe 1ºX × 2ºY e a de baixo 1ºY × 2ºX — times do mesmo
-     * grupo só se reencontram na final.
-     */
     private void semearPlayoffs(UUID campeonatoId, TorneioChaveamento config, List<Partida> deGrupos) {
         List<UUID> groupIds = lerJson(config.getGroupIds()).stream().map(UUID::fromString).toList();
         List<UUID> ordemSorteio = ordemDoSorteio(config);
@@ -224,7 +316,9 @@ public class ChaveamentoService {
 
         List<List<TeamRef>> classificados = new ArrayList<>();
         for (UUID groupId : groupIds) {
-            List<TeamRef> classificacao = classificar(porGrupo.get(groupId), ordemSorteio);
+            List<TeamRef> classificacao = StandingsService.ordenar(porGrupo.get(groupId), ordemSorteio).stream()
+                    .map(s -> new TeamRef(s.teamId(), s.teamName()))
+                    .toList();
             classificados.add(classificacao.subList(0, 2));
         }
 
@@ -243,56 +337,8 @@ public class ChaveamentoService {
         log.info("playoffs semeados campeonatoId={} confrontos={}", campeonatoId, criadas.size());
     }
 
-    /**
-     * Classificação calculada dos resultados locais. Desempate: pontos,
-     * vitórias, saldo, gols pró e, por fim, a ordem do sorteio (determinística).
-     */
-    private static List<TeamRef> classificar(List<Partida> finalizadas, List<UUID> ordemSorteio) {
-        Map<UUID, int[]> estatisticas = new HashMap<>(); // [pontos, vitorias, saldo, golsPro]
-        Map<UUID, String> nomes = new HashMap<>();
-
-        for (Partida p : finalizadas) {
-            nomes.put(p.getHomeTeamId(), p.getHomeTeamName());
-            nomes.put(p.getAwayTeamId(), p.getAwayTeamName());
-            int[] casa = estatisticas.computeIfAbsent(p.getHomeTeamId(), key -> new int[4]);
-            int[] fora = estatisticas.computeIfAbsent(p.getAwayTeamId(), key -> new int[4]);
-            int golsCasa = p.getHomeScore();
-            int golsFora = p.getAwayScore();
-            casa[2] += golsCasa - golsFora;
-            fora[2] += golsFora - golsCasa;
-            casa[3] += golsCasa;
-            fora[3] += golsFora;
-            if (golsCasa > golsFora) {
-                casa[0] += 3;
-                casa[1] += 1;
-            } else if (golsFora > golsCasa) {
-                fora[0] += 3;
-                fora[1] += 1;
-            } else {
-                casa[0] += 1;
-                fora[0] += 1;
-            }
-        }
-
-        Comparator<UUID> criterios = Comparator
-                .<UUID>comparingInt(id -> estatisticas.get(id)[0]).reversed()
-                .thenComparing(Comparator.<UUID>comparingInt(id -> estatisticas.get(id)[1]).reversed())
-                .thenComparing(Comparator.<UUID>comparingInt(id -> estatisticas.get(id)[2]).reversed())
-                .thenComparing(Comparator.<UUID>comparingInt(id -> estatisticas.get(id)[3]).reversed())
-                .thenComparingInt(ordemSorteio::indexOf);
-
-        return estatisticas.keySet().stream()
-                .sorted(criterios)
-                .map(id -> new TeamRef(id, nomes.get(id)))
-                .toList();
-    }
-
     // ---- mecânica do bracket ----
 
-    /**
-     * Ocupa um slot do bracket; quando o slot irmão (mesmo confronto) já está
-     * ocupado, cria a partida da rodada e publica match.scheduled.v1.
-     */
     private void ocuparSlot(UUID campeonatoId, int round, int slot, TeamRef time, List<Partida> criadas) {
         chaveSlotRepository.save(new ChaveSlot(campeonatoId, round, slot, time.teamId(), time.name()));
 
@@ -314,16 +360,20 @@ public class ChaveamentoService {
     }
 
     private void criarPartidasDeGrupo(UUID campeonatoId, UUID groupId, List<TeamRef> grupo, List<Partida> criadas) {
-        for (int[] par : Chaveamento.todosContraTodos(grupo.size())) {
-            TeamRef casa = grupo.get(par[0]);
-            TeamRef fora = grupo.get(par[1]);
-            Partida partida = partidaRepository.save(Partida.agendar(
-                    campeonatoId, groupId,
-                    casa.teamId(), casa.name(),
-                    fora.teamId(), fora.name(),
-                    null));
-            criadas.add(partida);
-            publicarAgendada(partida);
+        // organizado por rodada (método do círculo): o organizador agenda e
+        // comunica a liga em ondas ("Rodada 1, Rodada 2…")
+        List<List<int[]>> rodadas = Chaveamento.todosContraTodosPorRodada(grupo.size());
+        for (int r = 0; r < rodadas.size(); r++) {
+            for (int[] par : rodadas.get(r)) {
+                TeamRef casa = grupo.get(par[0]);
+                TeamRef fora = grupo.get(par[1]);
+                Partida partida = partidaRepository.save(Partida.deGrupo(
+                        campeonatoId, groupId, r + 1,
+                        casa.teamId(), casa.name(),
+                        fora.teamId(), fora.name()));
+                criadas.add(partida);
+                publicarAgendada(partida);
+            }
         }
     }
 
@@ -332,7 +382,7 @@ public class ChaveamentoService {
                 partida.getId(), partida.getCampeonatoId(), partida.getGroupId(),
                 new TeamRef(partida.getHomeTeamId(), partida.getHomeTeamName()),
                 new TeamRef(partida.getAwayTeamId(), partida.getAwayTeamName()),
-                partida.getScheduledAt()));
+                partida.getScheduledAt(), partida.getLocal()));
     }
 
     private void encerrarCampeonato(UUID campeonatoId, TeamRef campeao) {

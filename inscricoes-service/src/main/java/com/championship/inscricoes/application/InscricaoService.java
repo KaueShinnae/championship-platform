@@ -4,19 +4,23 @@ import com.championship.inscricoes.domain.Campeonato;
 import com.championship.inscricoes.domain.CampeonatoAdmin;
 import com.championship.inscricoes.domain.CampeonatoAdmin.CampeonatoAdminId;
 import com.championship.inscricoes.domain.CampeonatoFormato;
+import com.championship.inscricoes.domain.GestaoLog;
 import com.championship.inscricoes.domain.Inscricao;
 import com.championship.inscricoes.domain.InscricaoStatus;
 import com.championship.inscricoes.domain.Time;
 import com.championship.inscricoes.domain.Usuario;
 import com.championship.inscricoes.infrastructure.messaging.DomainEventWriter;
+import com.championship.inscricoes.infrastructure.messaging.events.ChampionshipCancelledPayload;
 import com.championship.inscricoes.infrastructure.messaging.events.ChampionshipPermissionsChangedPayload;
 import com.championship.inscricoes.infrastructure.messaging.events.PlayerRef;
 import com.championship.inscricoes.infrastructure.messaging.events.TeamRegisteredPayload;
 import com.championship.inscricoes.infrastructure.persistence.CampeonatoAdminRepository;
 import com.championship.inscricoes.infrastructure.persistence.CampeonatoRepository;
+import com.championship.inscricoes.infrastructure.persistence.GestaoLogRepository;
 import com.championship.inscricoes.infrastructure.persistence.InscricaoRepository;
 import com.championship.inscricoes.infrastructure.persistence.TimeRepository;
 import com.championship.inscricoes.infrastructure.persistence.UsuarioRepository;
+import com.championship.inscricoes.infrastructure.security.AuthTokens.Sessao;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,28 +36,58 @@ public class InscricaoService {
     private final DomainEventWriter domainEventWriter;
     private final CampeonatoAdminRepository campeonatoAdminRepository;
     private final UsuarioRepository usuarioRepository;
+    private final GestaoLogRepository gestaoLogRepository;
 
     public InscricaoService(CampeonatoRepository campeonatoRepository,
                              TimeRepository timeRepository,
                              InscricaoRepository inscricaoRepository,
                              DomainEventWriter domainEventWriter,
                              CampeonatoAdminRepository campeonatoAdminRepository,
-                             UsuarioRepository usuarioRepository) {
+                             UsuarioRepository usuarioRepository,
+                             GestaoLogRepository gestaoLogRepository) {
         this.campeonatoRepository = campeonatoRepository;
         this.timeRepository = timeRepository;
         this.inscricaoRepository = inscricaoRepository;
         this.domainEventWriter = domainEventWriter;
         this.campeonatoAdminRepository = campeonatoAdminRepository;
         this.usuarioRepository = usuarioRepository;
+        this.gestaoLogRepository = gestaoLogRepository;
     }
 
-    /** Quem cria é o dono; aprovacaoInscricoes define se capitães entram direto ou aguardam. */
+    @Transactional
+    public Campeonato criarCampeonato(String nome, CampeonatoFormato formato, UUID donoId,
+                                       boolean aprovacaoInscricoes, Integer minIntegrantes, Integer maxIntegrantes,
+                                       boolean disputaTerceiro) {
+        Campeonato campeonato = campeonatoRepository.save(Campeonato.criar(
+                nome, formato, donoId, aprovacaoInscricoes, minIntegrantes, maxIntegrantes, disputaTerceiro));
+        emitirPermissoes(campeonato);
+        return campeonato;
+    }
+
     @Transactional
     public Campeonato criarCampeonato(String nome, CampeonatoFormato formato, UUID donoId,
                                        boolean aprovacaoInscricoes) {
-        Campeonato campeonato = campeonatoRepository.save(
-                Campeonato.criar(nome, formato, donoId, aprovacaoInscricoes));
-        emitirPermissoes(campeonato);
+        return criarCampeonato(nome, formato, donoId, aprovacaoInscricoes, null, null, false);
+    }
+
+    @Transactional
+    public Campeonato editarCampeonato(UUID campeonatoId, UUID usuarioId, String nome, boolean aprovacaoInscricoes,
+                                        Integer minIntegrantes, Integer maxIntegrantes, boolean disputaTerceiro) {
+        Campeonato campeonato = buscarComPermissao(campeonatoId, usuarioId);
+        campeonato.editar(nome, aprovacaoInscricoes, minIntegrantes, maxIntegrantes, disputaTerceiro);
+        return campeonatoRepository.save(campeonato);
+    }
+
+    @Transactional
+    public Campeonato cancelarCampeonato(UUID campeonatoId, UUID usuarioId) {
+        Campeonato campeonato = buscar(campeonatoId);
+        if (!campeonato.ehDono(usuarioId)) {
+            throw new SemPermissaoException("apenas o dono do torneio pode cancelá-lo");
+        }
+        campeonato.cancelar();
+        campeonatoRepository.save(campeonato);
+        domainEventWriter.write(campeonato.getId(), ChampionshipCancelledPayload.TYPE,
+                new ChampionshipCancelledPayload(campeonato.getId()));
         return campeonato;
     }
 
@@ -62,7 +96,6 @@ public class InscricaoService {
         return campeonatoRepository.findAll();
     }
 
-    /** Dono ou admin delegado do campeonato (campeonato legado sem dono: qualquer conta). */
     @Transactional(readOnly = true)
     public boolean podeGerenciar(Campeonato campeonato, UUID usuarioId) {
         if (usuarioId == null) {
@@ -72,7 +105,6 @@ public class InscricaoService {
                 || campeonatoAdminRepository.existsById(new CampeonatoAdminId(campeonato.getId(), usuarioId));
     }
 
-    /** ABERTO/SORTEADO -> SORTEADO: o dashboard chama após gerar os confrontos no partidas-service. */
     @Transactional
     public Campeonato marcarSorteado(UUID campeonatoId, UUID usuarioId) {
         Campeonato campeonato = buscarComPermissao(campeonatoId, usuarioId);
@@ -80,7 +112,6 @@ public class InscricaoService {
         return campeonatoRepository.save(campeonato);
     }
 
-    /** SORTEADO -> ABERTO: reabre inscrições (o sorteio é descartado no partidas-service). */
     @Transactional
     public Campeonato reabrirInscricoes(UUID campeonatoId, UUID usuarioId) {
         Campeonato campeonato = buscarComPermissao(campeonatoId, usuarioId);
@@ -88,7 +119,6 @@ public class InscricaoService {
         return campeonatoRepository.save(campeonato);
     }
 
-    /** SORTEADO -> EM_ANDAMENTO: trava inscrições e chaveamento. */
     @Transactional
     public Campeonato iniciarCampeonato(UUID campeonatoId, UUID usuarioId) {
         Campeonato campeonato = buscarComPermissao(campeonatoId, usuarioId);
@@ -96,7 +126,6 @@ public class InscricaoService {
         return campeonatoRepository.save(campeonato);
     }
 
-    /** Delegação: só o dono adiciona administradores, identificados pelo email da conta. */
     @Transactional
     public Usuario adicionarAdmin(UUID campeonatoId, UUID solicitanteId, String emailDoAdmin) {
         Campeonato campeonato = buscar(campeonatoId);
@@ -114,7 +143,6 @@ public class InscricaoService {
         return admin;
     }
 
-    /** Só o dono remove administradores delegados. */
     @Transactional
     public void removerAdmin(UUID campeonatoId, UUID solicitanteId, UUID adminId) {
         Campeonato campeonato = buscar(campeonatoId);
@@ -138,12 +166,6 @@ public class InscricaoService {
         return inscricaoRepository.findDetalhadoByCampeonatoId(campeonatoId);
     }
 
-    /**
-     * Inscreve um time no campeonato. Organizador (dono/admin): dispara a saga
-     * na hora (team.registered.v1 no outbox, mesma transação — auto-confirma).
-     * Qualquer outro usuário logado: auto-inscrição de capitão, fica PENDENTE
-     * até o organizador aprovar (o evento só é gravado na aprovação).
-     */
     @Transactional
     public Inscricao inscreverTime(UUID campeonatoId, UUID usuarioId, String nomeTime, List<String> nomesJogadores) {
         Campeonato campeonato = buscar(campeonatoId);
@@ -157,6 +179,7 @@ public class InscricaoService {
             throw new IllegalStateException(
                     "time '" + nomeTime + "' ja esta inscrito neste campeonato — use o time existente ao agendar partidas");
         }
+        campeonato.validarNumeroDeIntegrantes(nomesJogadores == null ? 0 : nomesJogadores.size());
 
         boolean gestor = podeGerenciar(campeonato, usuarioId);
         if (!gestor && inscricaoRepository.existsPendenteDoCapitao(campeonatoId, usuarioId)) {
@@ -179,38 +202,34 @@ public class InscricaoService {
         return inscricao;
     }
 
-    /** Aprovação do organizador: dispara a saga de confirmação (team.registered.v1). */
     @Transactional
-    public Inscricao aprovarInscricao(UUID campeonatoId, UUID inscricaoId, UUID usuarioId) {
-        buscarComPermissao(campeonatoId, usuarioId);
+    public Inscricao aprovarInscricao(UUID campeonatoId, UUID inscricaoId, Sessao ator) {
+        buscarComPermissao(campeonatoId, ator.id());
         Inscricao inscricao = buscarInscricao(campeonatoId, inscricaoId);
         if (inscricao.getStatus() != InscricaoStatus.PENDENTE) {
             throw new IllegalStateException("so inscricoes PENDENTES podem ser aprovadas: " + inscricao.getStatus());
         }
         escreverTeamRegistered(inscricao.getTime(), inscricao.getCampeonato());
+        registrarLog(campeonatoId, ator, "APROVACAO", "aprovou a inscrição de \"" + inscricao.getTime().getNome() + "\"");
         return inscricao;
     }
 
-    /** Recusa do organizador: o capitão pode se inscrever de novo com outro time. */
     @Transactional
-    public Inscricao recusarInscricao(UUID campeonatoId, UUID inscricaoId, UUID usuarioId) {
-        buscarComPermissao(campeonatoId, usuarioId);
+    public Inscricao recusarInscricao(UUID campeonatoId, UUID inscricaoId, Sessao ator) {
+        buscarComPermissao(campeonatoId, ator.id());
         Inscricao inscricao = buscarInscricao(campeonatoId, inscricaoId);
         inscricao.recusar();
-        return inscricaoRepository.save(inscricao);
+        inscricaoRepository.save(inscricao);
+        registrarLog(campeonatoId, ator, "RECUSA", "recusou a inscrição de \"" + inscricao.getTime().getNome() + "\"");
+        return inscricao;
     }
 
-    /**
-     * Remove uma inscrição: o gestor modera enquanto as inscrições estão
-     * abertas (qualquer status — é a moderação do modo sem aprovação); o
-     * capitão cancela a própria enquanto PENDENTE.
-     */
     @Transactional
-    public void removerInscricao(UUID campeonatoId, UUID inscricaoId, UUID usuarioId) {
+    public void removerInscricao(UUID campeonatoId, UUID inscricaoId, Sessao ator) {
         Inscricao inscricao = buscarInscricao(campeonatoId, inscricaoId);
         Campeonato campeonato = inscricao.getCampeonato();
-        boolean gestor = podeGerenciar(campeonato, usuarioId);
-        boolean capitao = usuarioId != null && usuarioId.equals(inscricao.getCapitaoUsuarioId());
+        boolean gestor = podeGerenciar(campeonato, ator.id());
+        boolean capitao = ator.id() != null && ator.id().equals(inscricao.getCapitaoUsuarioId());
 
         if (gestor) {
             if (!campeonato.aceitaInscricoes()) {
@@ -227,15 +246,43 @@ public class InscricaoService {
         }
 
         Time time = inscricao.getTime();
+        String nomeTime = time.getNome();
         inscricaoRepository.delete(inscricao);
         timeRepository.delete(time);
+        if (gestor) {
+            registrarLog(campeonatoId, ator, "REMOCAO", "removeu o time \"" + nomeTime + "\"");
+        }
     }
 
-    /**
-     * Sugestões de reuso ("Meus times"): sempre snapshot — reusar copia nome e
-     * elenco para um time novo; editar depois não altera o torneio antigo.
-     * Dedupe por nome (case-insensitive), o cadastro mais recente vence.
-     */
+    @Transactional
+    public Inscricao editarTime(UUID campeonatoId, UUID inscricaoId, String novoNome,
+                                 List<String> nomesJogadores, Sessao ator) {
+        Campeonato campeonato = buscarComPermissao(campeonatoId, ator.id());
+        if (!campeonato.aceitaInscricoes()) {
+            throw new IllegalStateException(
+                    "times só podem ser editados com as inscrições abertas — reabra as inscrições primeiro");
+        }
+        Inscricao inscricao = buscarInscricao(campeonatoId, inscricaoId);
+        String nomeAntigo = inscricao.getTime().getNome();
+        if (!nomeAntigo.equalsIgnoreCase(novoNome)
+                && inscricaoRepository.existsAtivaByCampeonatoIdAndNomeTime(campeonatoId, novoNome)) {
+            throw new IllegalStateException("já existe um time com esse nome neste torneio");
+        }
+        campeonato.validarNumeroDeIntegrantes(nomesJogadores == null ? 0 : nomesJogadores.size());
+        inscricao.getTime().editar(novoNome, nomesJogadores);
+        timeRepository.save(inscricao.getTime());
+        String descricao = nomeAntigo.equals(novoNome)
+                ? "editou o elenco de \"" + novoNome + "\""
+                : "renomeou \"" + nomeAntigo + "\" para \"" + novoNome + "\"";
+        registrarLog(campeonatoId, ator, "EDICAO_TIME", descricao);
+        return inscricao;
+    }
+
+    @Transactional(readOnly = true)
+    public List<GestaoLog> listarGestaoLog(UUID campeonatoId) {
+        return gestaoLogRepository.findByCampeonatoIdOrderByCreatedAtDesc(campeonatoId);
+    }
+
     @Transactional(readOnly = true)
     public List<TimeReutilizavel> listarTimesReutilizaveis(UUID usuarioId) {
         java.util.Map<String, TimeReutilizavel> porNome = new java.util.LinkedHashMap<>();
@@ -259,12 +306,6 @@ public class InscricaoService {
                 new TeamRegisteredPayload(time.getId(), time.getNome(), campeonato.getId(), players));
     }
 
-    /**
-     * Snapshot de quem gerencia o campeonato — projeção consumida pelo
-     * partidas-service para autorizar escrita em partidas (sem chamada
-     * síncrona). Legado sem dono não emite: ausência de projeção = regra
-     * legada (qualquer logado) do lado de lá.
-     */
     private void emitirPermissoes(Campeonato campeonato) {
         if (campeonato.getDonoId() == null) {
             return;
@@ -274,6 +315,10 @@ public class InscricaoService {
                 .toList();
         domainEventWriter.write(campeonato.getId(), ChampionshipPermissionsChangedPayload.TYPE,
                 new ChampionshipPermissionsChangedPayload(campeonato.getId(), campeonato.getDonoId(), adminIds));
+    }
+
+    private void registrarLog(UUID campeonatoId, Sessao ator, String acao, String descricao) {
+        gestaoLogRepository.save(new GestaoLog(campeonatoId, ator.id(), ator.nome(), acao, descricao));
     }
 
     private Inscricao buscarInscricao(UUID campeonatoId, UUID inscricaoId) {

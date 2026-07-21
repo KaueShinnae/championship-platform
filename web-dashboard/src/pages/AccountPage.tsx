@@ -3,12 +3,6 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { login, logout, register, useAuth } from "../auth";
 import { useToast } from "../ui/toast";
 
-/**
- * Login/criação de conta com copy contextual: quem chega de uma ação
- * (inscrever meu time, reivindicar torneio) vê o motivo no título e volta
- * para onde estava após entrar (?voltar=<rota>). Fluxo de inscrição abre na
- * aba "Criar conta" (quem vem do link público raramente tem conta).
- */
 export function AccountPage() {
   const user = useAuth();
   const toast = useToast();

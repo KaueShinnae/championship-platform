@@ -26,7 +26,6 @@ public class Inscricao {
     @Column(name = "group_id")
     private UUID groupId;
 
-    /** Usuário que auto-inscreveu o time; nulo quando o organizador inscreveu direto. */
     @Column(name = "capitao_usuario_id")
     private UUID capitaoUsuarioId;
 
@@ -53,7 +52,6 @@ public class Inscricao {
         return new Inscricao(UUID.randomUUID(), time, campeonato, InscricaoStatus.PENDENTE, null, Instant.now());
     }
 
-    /** Auto-inscrição pelo capitão: fica PENDENTE até o organizador aprovar. */
     public static Inscricao pendenteDeCapitao(Time time, Campeonato campeonato, UUID capitaoUsuarioId) {
         return new Inscricao(UUID.randomUUID(), time, campeonato, InscricaoStatus.PENDENTE,
                 capitaoUsuarioId, Instant.now());
@@ -67,7 +65,6 @@ public class Inscricao {
         this.confirmedAt = Instant.now();
     }
 
-    /** PENDENTE -> RECUSADA: o capitão pode tentar de novo com outra inscrição. */
     public void recusar() {
         if (this.status != InscricaoStatus.PENDENTE) {
             throw new IllegalStateException("so uma inscricao PENDENTE pode ser recusada: " + this.status);

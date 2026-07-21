@@ -52,7 +52,7 @@ function GroupLeaders() {
           <li key={groupId}>
             <span className="leader-name">{leader.team_name}</span>
             <span className="meta">
-              {championshipId && championshipNames.get(championshipId)} · {groupLabels.get(groupId)} · {leader.points} pts
+              {championshipId && championshipNames.get(championshipId)} · {groupLabels.get(groupId)} · {leader.pontos} pts
             </span>
           </li>
         );

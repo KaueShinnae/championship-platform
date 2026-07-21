@@ -1,11 +1,6 @@
 import { Match } from "../api";
 import { toggleMyTeam, useMyTeam } from "../ui/myteam";
 
-/**
- * Composição dos grupos sorteados, derivada das partidas geradas — a tela do
- * momento "contra quem meu time caiu". A estrela marca o "meu time" do
- * visitante (preferência local, sem conta), destacado em todo o torneio.
- */
 export function GroupsPanel({
   championshipId,
   matches,

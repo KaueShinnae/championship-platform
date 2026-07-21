@@ -10,6 +10,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TimeTest {
 
     @Test
+    void editaNomeEElencoSemRecriar() {
+        Time time = Time.criar("Timaço FC", List.of("Jogador 1"));
+        java.util.UUID idOriginal = time.getId();
+
+        time.editar("Timação FC", List.of("Novo 1", "Novo 2", "Novo 3"));
+
+        assertThat(time.getId()).isEqualTo(idOriginal); // mesma entidade
+        assertThat(time.getNome()).isEqualTo("Timação FC");
+        assertThat(time.getJogadores()).extracting(Jogador::getNome)
+                .containsExactly("Novo 1", "Novo 2", "Novo 3");
+    }
+
+    @Test
+    void editarExigePeloMenosUmJogador() {
+        Time time = Time.criar("Timaço FC", List.of("Jogador 1"));
+
+        assertThatThrownBy(() -> time.editar("Timaço FC", List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void criaTimeComJogadores() {
         Time time = Time.criar("Timaço FC", List.of("Jogador 1", "Jogador 2"));
 
